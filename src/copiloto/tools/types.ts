@@ -110,6 +110,8 @@ export interface ToolParams {
   horizonDays: number;
   horizonLabel: string;
   now: Date;
+  /** Stock desglosado por espacio («¿qué hay en cada sección?»). */
+  byArea?: boolean;
 }
 
 export interface EvalItem {

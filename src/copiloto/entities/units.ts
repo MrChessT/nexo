@@ -105,6 +105,21 @@ export function toBase(amountText: string, unit: string | null, product: Product
   return { ok: false, reason: "unknown_unit" };
 }
 
+/**
+ * Cantidad de stock como se cuenta en barra: en el formato de conteo («3 × Botella 70 cl») y, si no es
+ * la unidad base, también en unidad base entre paréntesis («3 × Botella 70 cl (2,1 l)»). Sin formato de
+ * conteo (o si es un kilo), en unidad base.
+ */
+export function formatStock(qty: Decimal.Value, product: Pick<Product, "baseUnit" | "packs">, withBase = true): string {
+  const value = new Decimal(qty);
+  const pack = product.packs.find((p) => p.isCountDefault);
+  if (!pack || /^(kg|g|l|ml|cl|unidad|ud)$/i.test(pack.name.trim()) || new Decimal(pack.qtyBase).lte(0) || new Decimal(pack.qtyBase).eq(1)) {
+    return formatBase(value, product.baseUnit);
+  }
+  const packs = `${formatDecimal(value.div(pack.qtyBase), 2)} × ${pack.name}`;
+  return withBase ? `${packs} (${formatBase(value, product.baseUnit)})` : packs;
+}
+
 /** "1400" ml → "1,4 l" para mostrar. Solo formato; el valor sigue siendo decimal exacto. */
 export function formatBase(qty: Decimal.Value, baseUnit: Product["baseUnit"]): string {
   const value = new Decimal(qty);

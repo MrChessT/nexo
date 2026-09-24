@@ -77,6 +77,7 @@ class ViveroDataSource extends FixtureDataSource {
     now: Date,
     private readonly products: Product[],
     private readonly locationIds: string[],
+    private readonly areas: SessionContext["areas"],
   ) {
     super(now);
   }
@@ -89,6 +90,21 @@ class ViveroDataSource extends FixtureDataSource {
         const pack = p.packs.find((k) => !k.isCountDefault) ?? p.packs[0];
         const qty = String(Number(pack?.qtyBase ?? "1") * 2);
         return this.locationIds.filter((l) => filter.locationIds.includes(l)).map((locationId) => ({ locationId, productId: p.id, qty, avgCost: "0.02" }));
+      });
+    return [...own, ...extra];
+  }
+
+  /** En cada local, los productos del catálogo real se reparten entre sus espacios. */
+  override async areaBalances(areaId: string, productIds?: string[]) {
+    const own = await super.areaBalances(areaId, productIds);
+    const area = this.areas.find((a) => a.id === areaId);
+    if (!area) return own;
+    const siblings = this.areas.filter((a) => a.locationId === area.locationId);
+    const extra = this.products
+      .filter((p, i) => (!productIds || productIds.includes(p.id)) && siblings[i % siblings.length]?.id === areaId)
+      .map((p) => {
+        const pack = p.packs.find((k) => !k.isCountDefault) ?? p.packs[0];
+        return { areaId, productId: p.id, qty: String(Number(pack?.qtyBase ?? "1") * 2), avgCost: "0.02" };
       });
     return [...own, ...extra];
   }
@@ -165,7 +181,7 @@ export async function runConversations(real = false): Promise<{ report: string; 
     const confirmService = new ConfirmService(drafts, audit, () => NOW);
     const agent = new Agent({
       jev,
-      tools: new InventoryTools(new ViveroDataSource(NOW, products, ctx.locations.map((l) => l.id))),
+      tools: new InventoryTools(new ViveroDataSource(NOW, products, ctx.locations.map((l) => l.id), ctx.areas)),
       retriever: new LexicalRetriever(),
       writer: new Writer(null, metrics, { timeoutMs: 2000, attempts: 1 }),
       metrics,

@@ -77,6 +77,8 @@ export interface ActionPlan {
   products: ResolvedProduct[];
   motivo: MotivoMerma;
   ambiguous: number;
+  /** Jev veía que faltaba algo aunque cada dato estaba claro: el borrador lo avisa. */
+  reviewAll?: boolean;
 }
 
 /** Operaciones sobre el catálogo (no mueven stock). */
@@ -578,9 +580,16 @@ export class Interpreter {
       }
     }
 
-    // Mucha ambigüedad percibida aunque cada entidad haya pasado su umbral: se pregunta antes de escribir.
+    // Mucha ambigüedad percibida. Si algún dato era dudoso, se pide repetir la orden. Si todos estaban
+    // claros (operación, locales, productos y cantidades), una pregunta genérica no ayuda: se prepara
+    // el borrador con un aviso (nada se ejecuta sin confirmarlo) y el formato, si falta, se pregunta aparte.
     const ambiguo = asNoul(this.answers.ambiguo);
-    if (ambiguo && accion !== "cierre_inventario" && Object.keys(this.overrides).length === 0 && gateNoulNo(ambiguo, t.ambiguo) === "preguntar") {
+    const allClear =
+      locationOutcome === "actuar" &&
+      toLocationOutcome === "actuar" &&
+      products.every((p) => (p.productOutcome ?? "actuar") === "actuar" && (p.quantityOutcome ?? "actuar") === "actuar");
+    const tooAmbiguous = !!ambiguo && accion !== "cierre_inventario" && Object.keys(this.overrides).length === 0 && gateNoulNo(ambiguo, t.ambiguo) === "preguntar";
+    if (tooAmbiguous && !allClear) {
       return {
         type: "clarify",
         field: "tipo_accion",
@@ -603,6 +612,7 @@ export class Interpreter {
       products,
       motivo,
       ambiguous,
+      ...(tooAmbiguous ? { reviewAll: true } : {}),
     };
   }
 }

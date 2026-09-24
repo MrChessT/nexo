@@ -15,16 +15,31 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     const r = await tools.run("query_stock", { ...base, locationIds: [LOCATIONS[0]!.id] }, ctx);
     const rum = r.rows.find((row) => row.producto === "Ron Barceló Añejo 70 cl")!;
     // 2100 ml × 0,021429 €/ml = 45,0009 €
-    expect(rum).toMatchObject({ cantidad: "2,1 l", valor: "45,00 €", minimo: "2,8 l", bajo_minimo: true });
+    expect(rum).toMatchObject({ cantidad: "3 × Botella 70 cl (2,1 l)", valor: "45,00 €", minimo: "4 × Botella 70 cl", bajo_minimo: true });
     expect(r.rows[0]!.bajo_minimo).toBe(true);
   });
 
   it("stock por espacio usa stock_area_balances", async () => {
     const r = await tools.run("query_stock", { ...base, areaId: ctx.areas[0]!.id }, ctx);
     expect(r.rows.map((row) => [row.producto, row.espacio, row.cantidad])).toEqual([
-      ["Ron Barceló Añejo 70 cl", "Barra 1", "1,4 l"],
+      ["Ron Barceló Añejo 70 cl", "Barra 1", "2 × Botella 70 cl (1,4 l)"],
       ["Coca-Cola 20 cl", "Barra 1", "30 ud"],
     ]);
+  });
+
+  it("varios locales: una fila por producto con el total y el reparto por local", async () => {
+    const r = await tools.run("query_stock", { ...base, productIds: [PRODUCTS[0]!.id] }, ctx);
+    expect(r.totals.desglose).toBe("local");
+    expect(r.rows).toEqual([
+      expect.objectContaining({ producto: "Ron Barceló Añejo 70 cl", cantidad: "4 × Botella 70 cl (2,8 l)", desglose: "Parador 3 × Botella 70 cl ⚠ · Pickels 1 × Botella 70 cl", bajo_minimo: true }),
+    ]);
+  });
+
+  it("por secciones: el stock de cada espacio de los locales consultados", async () => {
+    const r = await tools.run("query_stock", { ...base, locationIds: [LOCATIONS[0]!.id], byArea: true }, ctx);
+    expect(r.totals.desglose).toBe("espacio");
+    expect(new Set(r.rows.map((row) => row.espacio))).toContain("Barra 1");
+    expect(r.rows.every((row) => row.local === "Parador")).toBe(true);
   });
 
   it("movimientos agrupados por tipo y producto dentro del periodo de negocio", async () => {

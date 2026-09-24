@@ -82,6 +82,15 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
   const more = result.truncated ? `\n…y ${result.count - result.rows.length} más.` : "";
   switch (result.tool) {
     case "query_stock": {
+      if (result.totals.desglose === "espacio") return renderByArea(result.rows, result.totals, where);
+      if (result.totals.desglose === "local") {
+        const low = result.totals.bajo_minimo !== "0" ? ` ${plural(result.totals.bajo_minimo ?? "0", "bajo mínimo", "bajo mínimo")} en algún local.` : "";
+        if (result.count === 1) {
+          const r = result.rows[0]!;
+          return `Stock ${where}: ${r.cantidad} en total (${r.valor}).\n${r.desglose}${r.bajo_minimo ? "\n⚠ Por debajo del mínimo en algún local." : ""}`;
+        }
+        return `Stock ${where}: valor total ${result.totals.valor_total}.${low}\n${list(result.rows, (r) => `${r.producto}: ${r.cantidad} — ${r.desglose}`, 8)}${more}`;
+      }
       const head =
         result.count === 1
           ? `Stock ${where}: ${result.rows[0]!.cantidad} (${result.rows[0]!.valor}).`
@@ -132,6 +141,21 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       )}`;
     }
   }
+}
+
+/** «¿Qué hay en cada sección?»: un bloque por espacio con sus productos. */
+function renderByArea(rows: ToolRow[], totals: Record<string, string>, where: string): string {
+  const groups = new Map<string, ToolRow[]>();
+  for (const r of rows) {
+    const key = `${r.local} · ${r.espacio}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  const blocks = [...groups.entries()].map(([area, items]) => {
+    const total = Number(items[0]?.productos_espacio ?? items.length);
+    const shown = items.map((r) => `${r.producto} ${r.cantidad}`).join(", ");
+    return `• ${area} (${plural(String(total), "producto", "productos")}): ${shown}${total > items.length ? ` y ${total - items.length} más` : ""}`;
+  });
+  return `Stock por secciones ${where}: ${plural(totals.espacios ?? "0", "sección", "secciones")} con producto, valor total ${totals.valor_total}.\n${blocks.join("\n")}`;
 }
 
 function plural(count: string, one: string, many: string): string {

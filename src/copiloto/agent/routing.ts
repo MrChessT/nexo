@@ -3,7 +3,8 @@ import type { JsonValue, Questions } from "@typesafe-ai/sdk";
 import type { AppRoute } from "../contract/index";
 import { areaLabel, type Product, type SessionContext } from "../domain";
 import { parseQuantities, type Segment } from "../entities/quantity-parser";
-import type { Retriever } from "../entities/retriever";
+import { tokenSimilarity, type Retriever } from "../entities/retriever";
+import { tokenize } from "../entities/normalize";
 import { RESERVED_KEYS, routingQuestions, type RoutingState } from "../jev/catalog";
 import type { Turn } from "./session";
 
@@ -32,6 +33,16 @@ export interface RoutingRequest {
 
 function optionKey(name: string): string {
   return RESERVED_KEYS.has(name) ? `${name} (producto)` : name;
+}
+
+/** Palabras genéricas de espacio: «¿qué hay en cada sección?» también pide ver los espacios. */
+const AREA_WORDS = ["seccion", "secciones", "espacio", "espacios", "zona", "zonas"];
+
+/** ¿El mensaje nombra algún espacio? Una palabra con sentido de su nombre («barra», «almacen», «camara»). */
+export function mentionsArea(message: string, ctx: Pick<SessionContext, "areas">): boolean {
+  const words = tokenize(message);
+  if (words.some((w) => AREA_WORDS.includes(w))) return true;
+  return ctx.areas.some((a) => tokenize(a.name).some((n) => n.length >= 4 && !/^\d+$/.test(n) && words.some((w) => tokenSimilarity(w, n) >= 0.85)));
 }
 
 function describe(product: Product): JsonValue {
@@ -83,7 +94,9 @@ export async function buildRouting(
   }
 
   const locationKeys = new Map(ctx.locations.map((l) => [l.name, l.id]));
-  const areaKeys = new Map(ctx.areas.map((a) => [areaLabel(a, ctx.locations), a.id]));
+  // El espacio solo se pregunta si el mensaje nombra alguno («barra 1», «el almacén»). Si no, Jev tendía
+  // a elegir uno por el nombre del local («vivero» → «Vivero · Almacén general») y marcaba dudas.
+  const areaKeys = new Map(mentionsArea(message, ctx) ? ctx.areas.map((a) => [areaLabel(a, ctx.locations), a.id]) : []);
   const currentLocation = ctx.locations.find((l) => l.id === pageLocationId)?.name ?? null;
 
   const state: RoutingState = {

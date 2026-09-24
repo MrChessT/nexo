@@ -325,6 +325,7 @@ export class Agent {
       }
     }
     draft = validateDraft(draft);
+    if (plan.type === "accion" && plan.reviewAll) draft.warnings.unshift("Revisa los datos antes de confirmar: puede que falte algo de lo que querías.");
     if (coherence === null) {
       draft.warnings.unshift("No he podido comprobar el borrador: revísalo con atención.");
     } else {
@@ -424,13 +425,14 @@ export class Agent {
       horizonDays: h.days,
       horizonLabel: h.label,
       now,
+      ...(plan.tool === "query_stock" && wantsAreaBreakdown(message) ? { byArea: true } : {}),
     };
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
     const notices: string[] = [];
     if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
     if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
-      notices.push("No has indicado local: he consultado todos los tuyos.");
+      notices.push("No has indicado local: te lo muestro de todos, desglosado por local.");
     }
 
     const evaluations = await timer.time("jev2", () => this.evaluate(result.evalItems, message, h.label));
@@ -539,6 +541,12 @@ function quantityOverrides(pending: PendingClarify, typed: { amount: string; uni
   void _pack;
   void _unit;
   return { ...rest, [`cantidad_${i}`]: typed.amount, ...(typed.unit ? { [`unidad_texto_${i}`]: typed.unit } : {}) };
+}
+
+/** «¿Qué hay en cada sección / por zonas / en cada barra?»: el stock se desglosa por espacio. */
+export function wantsAreaBreakdown(message: string): boolean {
+  const text = tokenize(message).join(" ");
+  return /\b(cada|por|las|todas las|todos los|sus) (seccion|secciones|espacio|espacios|zona|zonas|barra|barras)\b/.test(text) || /\b(secciones|espacios|zonas)\b/.test(text);
 }
 
 /** Saludo, agradecimiento o despedida corta («gracias!», «buenas», «hasta luego»). */
