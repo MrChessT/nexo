@@ -1,6 +1,8 @@
 // Motor de sugerencias proactivas: el código calcula los candidatos → Jev valora relevancia y urgencia
 // en UNA petición → se ordenan → una línea por sugerencia (LLM verificada o plantilla).
+import Decimal from "decimal.js";
 import { LruCache } from "../cache/lru";
+import { formatMoney } from "../entities/units";
 import type { AppRoute, NavigateEvent } from "../contract/index";
 import type { SessionContext } from "../domain";
 import { asNoul, asScore } from "../gates/gate";
@@ -15,7 +17,7 @@ import type { Writer } from "../writer/writer";
 
 export interface Suggestion {
   id: string;
-  kind: "stock_bajo" | "traspaso_pendiente" | "desvio_inventario" | "subida_precio";
+  kind: "stock_bajo" | "traspaso_pendiente" | "desvio_inventario" | "subida_precio" | "pedido_pendiente" | "inventario_pendiente";
   urgency: Urgency;
   urgencyScore: number;
   confidence: number;
@@ -40,6 +42,8 @@ const KIND: Record<EvalKind, Suggestion["kind"]> = {
   atasco: "traspaso_pendiente",
   desvio: "desvio_inventario",
   subida: "subida_precio",
+  pedido: "pedido_pendiente",
+  conteo: "inventario_pendiente",
 };
 
 const ROUTE: Record<EvalKind, AppRoute> = {
@@ -47,9 +51,14 @@ const ROUTE: Record<EvalKind, AppRoute> = {
   atasco: "/traspasos",
   desvio: "/inventarios",
   subida: "/productos",
+  pedido: "/pedidos",
+  conteo: "/inventarios",
 };
 
-const SOURCES: ToolName[] = ["query_reorder", "query_pending_transfers", "query_count_variance", "query_prices"];
+const SOURCES: ToolName[] = ["query_reorder", "query_pending_transfers", "query_count_variance", "query_prices", "query_orders"];
+
+/** Días sin inventario a partir de los cuales se propone contar. */
+const COUNT_STALE_DAYS = 14;
 
 /** Línea determinista por tipo; solo usa cifras de `data`. */
 export function suggestionTemplate(kind: EvalKind, d: Record<string, string>): string {
@@ -62,6 +71,12 @@ export function suggestionTemplate(kind: EvalKind, d: Record<string, string>): s
       return `Desvío en ${d.product} (${d.venue}): ${d.diff}, ${d.diff_value}.`;
     case "subida":
       return `${d.product} ha subido de ${d.old_price} a ${d.new_price} (${d.change_pct}) con ${d.supplier}.`;
+    case "pedido":
+      return d.state === "borrador"
+        ? `Pedido a ${d.supplier} para ${d.venue} en borrador desde hace ${d.age}: envíalo o descártalo.`
+        : `Pedido a ${d.supplier} para ${d.venue} con retraso (entrega ${d.expected}, ${d.value}).`;
+    case "conteo":
+      return `${d.venue}: ${d.days_since_count} sin inventario, con ${d.stock_value} en stock.`;
   }
 }
 
@@ -98,7 +113,7 @@ export class SuggestionEngine {
 
     // 1. Candidatos calculados por el código (sin Jev).
     const results = await Promise.all(SOURCES.map((tool) => tools.run(tool, params, ctx)));
-    const candidates: EvalItem[] = results.flatMap((r) => r.evalItems).slice(0, MAX_CANDIDATES);
+    const candidates: EvalItem[] = [...results.flatMap((r) => r.evalItems), ...(await this.staleCounts(tools, locationIds, ctx, now))].slice(0, MAX_CANDIDATES);
     if (candidates.length === 0) return this.remember(key, { generatedAt: now.toISOString(), items: [] });
 
     // 2. Jev: relevancia (noul) + urgencia (score) de todos en UNA petición.
@@ -137,6 +152,33 @@ export class SuggestionEngine {
       }),
     );
     return this.remember(key, { generatedAt: now.toISOString(), items });
+  }
+
+  /** Locales con stock que llevan más de COUNT_STALE_DAYS sin cerrar un inventario. */
+  private async staleCounts(tools: Tools, locationIds: string[], ctx: SessionContext, now: Date): Promise<EvalItem[]> {
+    const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
+    const [results, balances] = await Promise.all([tools.source.countResults({ locationIds, since }), tools.source.balances({ locationIds })]);
+    const lastCount = new Map<string, string>();
+    for (const r of results) if ((lastCount.get(r.locationId) ?? "") < r.closedAt) lastCount.set(r.locationId, r.closedAt);
+    const items: EvalItem[] = [];
+    for (const locationId of locationIds) {
+      const value = balances.filter((b) => b.locationId === locationId).reduce((acc, b) => acc.plus(new Decimal(b.qty).mul(b.avgCost)), new Decimal(0));
+      if (value.lte(0)) continue;
+      const last = lastCount.get(locationId);
+      const days = last ? Math.floor((now.getTime() - new Date(last).getTime()) / 86_400_000) : null;
+      if (days !== null && days < COUNT_STALE_DAYS) continue;
+      items.push({
+        kind: "conteo",
+        key: `conteo:${locationId}`,
+        locationId,
+        data: {
+          venue: ctx.locations.find((l) => l.id === locationId)?.name ?? "local",
+          days_since_count: days === null ? "más de 60 días" : `${days} días`,
+          stock_value: formatMoney(value),
+        },
+      });
+    }
+    return items;
   }
 
   private remember(key: string, value: SuggestionsResponse): SuggestionsResponse {

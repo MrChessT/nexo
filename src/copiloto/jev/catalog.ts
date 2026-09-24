@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.7";
+export const CATALOG_VERSION = "2026-09-24.8";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -270,7 +270,7 @@ export function routingQuestions(input: RoutingInput): Questions {
 
 // Llamada nº 2: evaluación de datos calculados por el código ---------------------
 
-export type EvalKind = "reponer" | "desvio" | "subida" | "atasco";
+export type EvalKind = "reponer" | "desvio" | "subida" | "atasco" | "pedido" | "conteo";
 
 export const URGENCY_LEVELS = [
   "baja: can wait; informational only.",
@@ -290,6 +290,10 @@ const EVAL_INSTRUCTIONS: Record<EvalKind, (i: number) => string> = {
     `Is the price change in \`items.${i}\` (\`items.${i}.old_price\` to \`items.${i}.new_price\`, \`items.${i}.change_pct\`) significant for a hospitality buyer?`,
   atasco: (i) =>
     `Has transfer \`items.${i}\` (sent \`items.${i}.sent_ago\`, value \`items.${i}.value\`) been in transit long enough to follow up?`,
+  pedido: (i) =>
+    `Does purchase order \`items.${i}\` (\`items.${i}.state\`, age \`items.${i}.age\`, expected \`items.${i}.expected\`, value \`items.${i}.value\`) need the manager to act now (chase the supplier or send the draft)?`,
+  conteo: (i) =>
+    `Is it time to count stock at \`items.${i}.venue\`, given \`items.${i}.days_since_count\` without a count and \`items.${i}.stock_value\` in stock?`,
 };
 
 const EVAL_CRITERIA: Partial<Record<EvalKind, { true: string; false: string }>> = {

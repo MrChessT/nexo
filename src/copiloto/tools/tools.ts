@@ -164,12 +164,29 @@ export class InventoryTools implements Tools {
       importe: formatMoney(pendingValue),
     }));
     const pending = lines.filter((l) => l.o.status !== "draft");
+    // Aviso proactivo: pedidos con retraso y borradores olvidados (más de un día sin enviar).
+    const ageDays = (iso: string) => Math.floor((params.now.getTime() - new Date(iso).getTime()) / 86_400_000);
+    const evalItems: EvalItem[] = lines
+      .filter(({ o, late }) => late || (o.status === "draft" && ageDays(o.createdAt) >= 1))
+      .map(({ o, pendingValue, late }) => ({
+        kind: "pedido",
+        key: `pedido:${o.id}`,
+        locationId: o.locationId,
+        data: {
+          supplier: o.supplierName,
+          venue: locationName(ctx, o.locationId),
+          state: late ? "retrasado" : "borrador",
+          age: `${ageDays(o.sentAt ?? o.createdAt)} días`,
+          expected: o.expectedDate ? formatDay(o.expectedDate) : "sin fecha",
+          value: formatMoney(pendingValue),
+        },
+      }));
     return finish("query_orders", rows, {
       pendientes: String(pending.length),
       borradores: String(lines.length - pending.length),
       retrasados: String(lines.filter((l) => l.late).length),
       valor_pendiente: formatMoney(pending.reduce((acc, l) => acc.plus(l.pendingValue), new Decimal(0))),
-    });
+    }, evalItems);
   }
 
   /** Gasto en compras (recepciones contabilizadas) por proveedor en el periodo; 30 días si no se indica. */
