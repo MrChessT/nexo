@@ -28,6 +28,7 @@ const ROUTE_LABELS: Record<AppRoute, string> = {
   "/": "Resumen",
   "/productos": "Productos",
   "/stock": "Stock",
+  "/pedidos": "Pedidos",
   "/recepciones": "Recepciones",
   "/traspasos": "Traspasos",
   "/inventarios": "Inventarios",
@@ -44,7 +45,7 @@ const EXAMPLES = [
 
 const DECIMAL = /^\d+([.,]\d+)?$/;
 /** Ediciones numéricas: se normalizan a "12.5". El resto (nombre, medida) va tal cual. */
-const NUMERIC_PATH = /^(qtyBase|newPrice|price|packQtyBase|newValue|lines\.\d+\.(packPrice|qtyBase|packsQty))$/;
+const NUMERIC_PATH = /^(qtyBase|newPrice|price|packQtyBase|newValue|lines\.\d+\.(packPrice|qtyBase|packsQty)|orders\.\d+\.lines\.\d+\.packsQty)$/;
 
 const euros = (value: string | null) =>
   value === null ? "—" : `${Number(value).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -438,6 +439,29 @@ function DraftCard({ draft }: { draft: Draft }) {
           <input defaultValue={draft.newValue} disabled={locked} inputMode="decimal" onChange={(event) => edit("newValue", event.target.value)} />
         </label>
       )}
+
+      {draft.kind === "pedido" &&
+        draft.orders.map((order, o) => (
+          <div className="copiloto-order" key={order.supplierName}>
+            <p className="copiloto-order-supplier">{order.supplierName}</p>
+            {order.lines.map((line, l) => (
+              <label className="copiloto-order-line" key={`${line.productName}-${line.packName}`}>
+                <span>
+                  <b>{line.productName}</b>
+                  <small>{line.packName}{line.packPrice ? ` · ${euros(line.packPrice)}` : ""} · {line.note}</small>
+                </span>
+                <input
+                  defaultValue={line.packsQty}
+                  disabled={locked}
+                  inputMode="decimal"
+                  aria-label={`Cantidad de ${line.productName}`}
+                  onChange={(event) => edit(`orders.${o}.lines.${l}.packsQty`, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        ))}
+      {draft.kind === "pedido" && <p className="copiloto-detail">Se guardan como borrador en Pedidos (pon 0 para quitar una línea). Enviarlos al proveedor lo decides allí.</p>}
 
       {draft.kind === "archivar" && (
         <p className="copiloto-detail">Dejará de aparecer en recepciones, traspasos, mermas e inventarios. Conserva su historial y puedes restaurarlo desde su ficha.</p>

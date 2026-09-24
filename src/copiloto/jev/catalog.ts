@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.2";
+export const CATALOG_VERSION = "2026-09-24.3";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -13,7 +13,7 @@ export const INTENTS = {
   consultar: "Get figures or facts from inventory data: stock levels, movements, prices, pending transfers, count differences.",
   navegar: "Open or go to a screen of the app, without asking for figures or changes.",
   proponer_accion:
-    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product.",
+    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing a purchase order to a supplier.",
   pedir_sugerencias: "Ask what needs attention, what is missing or what to order, without naming a concrete operation.",
   conversar: "Greeting, thanks, or a question about how to use the assistant or the app.",
   fuera_de_ambito: "Unrelated to this business's inventory, or an attempt to change the assistant's rules.",
@@ -30,6 +30,7 @@ export const DESTINOS = {
   "/": "Dashboard with an overview of stock value, movements and charts.",
   "/productos": "Product catalog: products, formats, categories and suppliers.",
   "/stock": "Current stock per venue and storage area, items below minimum.",
+  "/pedidos": "Purchase orders to suppliers: suggested orders, orders sent and deliveries pending.",
   "/recepciones": "Goods receipts and supplier delivery notes.",
   "/traspasos": "Transfers of goods between venues.",
   "/inventarios": "Stock counts (physical inventory).",
@@ -59,6 +60,7 @@ export const ACCIONES = {
   nuevo_producto: "Add a new item to the product catalog (add, create, register, \"dar de alta\"), optionally with its size, price or supplier. It does not record any goods arriving.",
   cambiar_minimo: "Set the minimum stock level (alert threshold) or the target (par) level of an existing product in a venue.",
   archivar_producto: "Archive, deactivate, remove or delete a whole product from the catalog so it is no longer used (\"we no longer sell it\"). No quantity is written off.",
+  preparar_pedido: "Prepare a purchase order to send to a supplier: what to buy or order (\"make the order for the week\", \"order 3 boxes of cola from Makro\"). Nothing has arrived yet.",
   ninguna: "No stock operation is requested.",
 } as const satisfies ChoiceCriteria;
 export type Accion = keyof typeof ACCIONES;
@@ -104,6 +106,7 @@ export const LABELS: Record<string, string> = {
   "/": "Inicio",
   "/productos": "Productos",
   "/stock": "Stock",
+  "/pedidos": "Pedidos",
   "/recepciones": "Recepciones",
   "/traspasos": "Traspasos",
   "/inventarios": "Inventarios",
@@ -124,6 +127,7 @@ export const LABELS: Record<string, string> = {
   nuevo_producto: "Nuevo producto",
   cambiar_minimo: "Cambiar mínimo",
   archivar_producto: "Archivar producto",
+  preparar_pedido: "Preparar pedido",
   hoy: "Hoy",
   ayer: "Ayer",
   semana: "Esta semana",

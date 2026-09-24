@@ -10,7 +10,7 @@ export const ROLES = ["owner", "admin", "manager", "staff"] as const;
 export const Role = z.enum(ROLES);
 export type Role = z.infer<typeof Role>;
 
-export const APP_ROUTES = ["/", "/productos", "/stock", "/recepciones", "/traspasos", "/inventarios", "/mermas", "/informes"] as const;
+export const APP_ROUTES = ["/", "/productos", "/stock", "/pedidos", "/recepciones", "/traspasos", "/inventarios", "/mermas", "/informes"] as const;
 export const AppRoute = z.enum(APP_ROUTES);
 export type AppRoute = z.infer<typeof AppRoute>;
 
@@ -151,7 +151,7 @@ export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 export interface DraftBase {
   draftId: string;
-  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | CatalogKind;
+  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | CatalogKind;
   title: string;
   requiredRole: Role;
   canConfirm: boolean;
@@ -291,7 +291,30 @@ export interface ArchiveDraft extends DraftBase {
 
 export type CatalogDraft = PriceDraft | NewProductDraft | MinimumDraft | ArchiveDraft;
 
-export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | CatalogDraft;
+/** Pedidos a proveedor (uno por proveedor) que se crean en borrador al confirmar. */
+export interface OrderDraft extends DraftBase {
+  kind: "pedido";
+  locationId: string;
+  locationName: string;
+  /** Periodo que cubre: "la próxima semana", "el fin de semana"… */
+  horizonLabel: string;
+  orders: Array<{
+    supplierId: string;
+    supplierName: string;
+    lines: Array<{
+      productId: string;
+      productName: string;
+      packId: string;
+      packName: string;
+      packsQty: string;
+      packPrice: string | null;
+      /** Por qué se pide: "quedan 1,4 l · para 2 días". */
+      note: string;
+    }>;
+  }>;
+}
+
+export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft;
 
 // Gráficas y análisis -----------------------------------------------------------
 

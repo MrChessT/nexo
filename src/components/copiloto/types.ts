@@ -1,6 +1,6 @@
 // Tipos de CONTRACT.md de Nexo Copiloto (versión 1.0.0-draft). La app solo depende de este contrato.
 
-export type AppRoute = "/" | "/productos" | "/stock" | "/recepciones" | "/traspasos" | "/inventarios" | "/mermas" | "/informes";
+export type AppRoute = "/" | "/productos" | "/stock" | "/pedidos" | "/recepciones" | "/traspasos" | "/inventarios" | "/mermas" | "/informes";
 
 export type AnalyticsView = "resumen" | "consumo" | "mermas" | "stock" | "precios" | "reposicion" | "desvios";
 
@@ -160,7 +160,16 @@ export type Draft =
       newValue: string;
       baseUnit: string;
     })
-  | (DraftBase & { kind: "archivar"; productName: string; stockQty: string; baseUnit: string });
+  | (DraftBase & { kind: "archivar"; productName: string; stockQty: string; baseUnit: string })
+  | (DraftBase & {
+      kind: "pedido";
+      locationName: string;
+      horizonLabel: string;
+      orders: Array<{
+        supplierName: string;
+        lines: Array<{ productName: string; packName: string; packsQty: string; packPrice: string | null; note: string }>;
+      }>;
+    });
 
 export interface ErrorEvent {
   code: string;

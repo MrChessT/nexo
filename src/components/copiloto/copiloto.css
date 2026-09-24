@@ -78,3 +78,8 @@
 .copiloto-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .copiloto-field select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: #fff; }
 .copiloto-ack { padding: 7px 9px; color: var(--red); background: var(--soft-red); border-radius: 8px; font-weight: 600; }
+.copiloto-order { display: flex; flex-direction: column; gap: 4px; padding: 8px 9px; background: #f8faf8; border-radius: 8px; }
+.copiloto-order-supplier { margin: 0 0 2px; font-size: 11px; font-weight: 700; color: var(--ink); }
+.copiloto-order-line { display: grid; grid-template-columns: 1fr 58px; align-items: center; gap: 8px; font-size: 11px; }
+.copiloto-order-line small { display: block; color: var(--muted); font-size: 10px; }
+.copiloto-order-line input { height: 30px; padding: 0 6px; text-align: right; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); }

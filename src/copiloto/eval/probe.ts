@@ -21,7 +21,7 @@ async function main() {
 for (const message of phrases) {
   const built = await buildRouting(message, "/", undefined, [], fixtureContext(), new LexicalRetriever(), true);
   const r = await jev.evaluate(built.state as unknown as EntryType, built.questions);
-  for (const id of ["intent", "tipo_accion"]) {
+  for (const id of (process.env.PROBE_IDS ?? "intent,tipo_accion").split(",")) {
     const a = asChoice(r.answers[id])!;
     const top = Object.entries(a.probabilities as Record<string, number>).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, v]) => `${k} ${v.toFixed(2)}`);
     console.log(`${message} | ${id}: conf ${a.confidence.toFixed(2)} · ${top.join(" · ")}`);

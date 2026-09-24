@@ -64,6 +64,11 @@ export class FixtureWriter implements InventoryWriter {
     this.record("setLocationLevel", args);
   }
 
+  async createOrder(args: Parameters<InventoryWriter["createOrder"]>[0]) {
+    this.record("createOrder", args);
+    return { orderId: randomUUID() };
+  }
+
   async archiveProduct(productId: string) {
     this.record("archiveProduct", { productId });
   }

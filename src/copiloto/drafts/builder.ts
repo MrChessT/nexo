@@ -30,6 +30,8 @@ const REQUIRED_ROLE: Record<Draft["kind"], Role> = {
   producto_nuevo: "manager",
   minimo: "manager",
   archivar: "manager",
+  // Un pedido se crea en borrador: cualquiera del local puede prepararlo; enviarlo es de encargado.
+  pedido: "staff",
 };
 
 const EDITABLE: Record<Draft["kind"], string[]> = {
@@ -41,6 +43,7 @@ const EDITABLE: Record<Draft["kind"], string[]> = {
   producto_nuevo: ["name", "categoryId", "dimension", "packName", "packQtyBase", "price", "acknowledged"],
   minimo: ["newValue", "acknowledged"],
   archivar: ["acknowledged"],
+  pedido: ["orders.*.lines.*.packsQty", "acknowledged"],
 };
 
 /** Cabecera común de cualquier borrador (id, rol, caducidad, campos editables). */

@@ -46,6 +46,8 @@ export default function OrdersPage() {
         setLocation(ref.locations.some((l) => l.id === wanted) ? wanted : "");
         // Desde el resumen («Ver qué reponer») se abre directamente la sugerencia.
         if (params.has("sugerir")) setSuggesting(true);
+        // El asistente enlaza aquí tras crear borradores (?estado=draft).
+        if (params.get("estado") === "draft") setTab("draft");
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudieron cargar los datos.");
       }

@@ -174,6 +174,37 @@ export const ArchiveDraftSchema = base.extend({
   baseUnit,
 });
 
+export const OrderDraftSchema = base.extend({
+  kind: z.literal("pedido"),
+  locationId: id,
+  locationName: z.string(),
+  horizonLabel: z.string(),
+  orders: z
+    .array(
+      z.object({
+        supplierId: id,
+        supplierName: z.string(),
+        lines: z
+          .array(
+            z.object({
+              productId: id,
+              productName: z.string(),
+              packId: id,
+              packName: z.string(),
+              // 0 = quitar la línea desde la tarjeta.
+              packsQty: nonNegative,
+              packPrice: nonNegative.nullable(),
+              note: z.string().max(200),
+            }),
+          )
+          .min(1)
+          .max(80),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
 const SCHEMAS = {
   merma: WasteDraftSchema,
   traspaso: TransferDraftSchema,
@@ -183,6 +214,7 @@ const SCHEMAS = {
   producto_nuevo: NewProductDraftSchema,
   minimo: MinimumDraftSchema,
   archivar: ArchiveDraftSchema,
+  pedido: OrderDraftSchema,
 } as const;
 
 export function validateDraft<D extends Draft>(draft: D): D {

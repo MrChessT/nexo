@@ -1,5 +1,6 @@
 // POST /actions/confirm: ejecuta un borrador guardado tras el clic del usuario.
 // Comprueba dueño, caducidad, rol y ediciones; luego llama a las RPC con el JWT del usuario.
+import Decimal from "decimal.js";
 import { z } from "zod";
 import type { AuditSink } from "../audit/audit";
 import type { AppRoute, Draft, NavigateEvent } from "../contract/index";
@@ -32,6 +33,7 @@ const ROUTE: Record<Draft["kind"], AppRoute> = {
   producto_nuevo: "/productos",
   minimo: "/stock",
   archivar: "/productos",
+  pedido: "/pedidos",
 };
 
 /** Mensajes en español de los códigos de las RPC (mismos textos que src/lib/errors.ts de la app). */
@@ -211,6 +213,30 @@ export class ConfirmService {
       case "minimo": {
         await writer.setLocationLevel({ locationId: draft.locationId, productId: draft.productId, field: draft.field, value: draft.newValue });
         return { ok: true, kind: "minimo", documentId: draft.productId, movementIds: [], message: `${draft.field === "min_qty" ? "Mínimo" : "Objetivo"} de ${draft.productName} en ${draft.locationName} actualizado.`, navigate: navigate({ locationId: draft.locationId }) };
+      }
+      case "pedido": {
+        const orders = draft.orders
+          .map((o) => ({ ...o, lines: o.lines.filter((l) => new Decimal(l.packsQty).gt(0)) }))
+          .filter((o) => o.lines.length > 0);
+        if (orders.length === 0) return { ok: false, code: "invalid_edit", message: "Has dejado todas las cantidades a 0: no hay nada que pedir." };
+        const ids: string[] = [];
+        for (const o of orders) {
+          const { orderId } = await writer.createOrder({
+            orgId: ctx.orgId,
+            locationId: draft.locationId,
+            supplierId: o.supplierId,
+            lines: o.lines.map((l) => ({ packId: l.packId, packsQty: l.packsQty, packPrice: l.packPrice })),
+          });
+          ids.push(orderId);
+        }
+        return {
+          ok: true,
+          kind: "pedido",
+          documentId: ids[0] ?? null,
+          movementIds: [],
+          message: ids.length === 1 ? "Pedido creado en borrador. Revísalo y envíalo desde Pedidos." : `${ids.length} pedidos creados en borrador. Revísalos y envíalos desde Pedidos.`,
+          navigate: navigate({ locationId: draft.locationId, status: "draft" }),
+        };
       }
       case "archivar": {
         await writer.archiveProduct(draft.productId);
