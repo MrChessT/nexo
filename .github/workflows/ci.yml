@@ -1,0 +1,47 @@
+# Puerta de calidad: se ejecuta en cada push y en cada pull request.
+# app: lint, tipos, tests y build. db: aplica todas las migraciones en un Postgres limpio y pasa
+# los tests de permisos/RLS (supabase/tests). Si falla cualquiera de los dos, no se integra.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Valores ficticios: el build no se conecta a Supabase.
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      # Solo los servicios que usan las migraciones y los tests (Postgres, Auth, Storage, API).
+      - run: supabase start -x analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,studio,vector
+      - run: supabase test db
+      - run: supabase db lint --level error
