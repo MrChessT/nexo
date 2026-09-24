@@ -23,6 +23,7 @@ import type { DraftStore } from "../drafts/store";
 import type { DecisionReport, Evaluation, ReportOutcome } from "./report";
 import { buildRouting, type RoutingMeta } from "./routing";
 import { activeFocus, type Focus, type PendingClarify, type Session, type SessionStore } from "./session";
+import { HabitsStore } from "./habits";
 import type { Draft } from "../contract/index";
 import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
@@ -36,6 +37,7 @@ export interface RequestScope {
   sessions?: SessionStore;
   drafts?: DraftStore;
   confirmDraft?: ConfirmDraft;
+  habits?: HabitsStore;
 }
 
 export interface AgentDeps {
@@ -53,6 +55,8 @@ export interface AgentDeps {
   builder: DraftBuilder;
   /** Confirmación por chat en desarrollo y tests (en producción llega por petición). */
   confirmDraft?: ConfirmDraft;
+  /** Hábitos del usuario (en producción, con Supabase por petición). */
+  habits?: HabitsStore;
   now?: () => Date;
 }
 
@@ -105,10 +109,11 @@ export class Agent {
       sessions: scope.sessions ?? this.deps.sessions,
       drafts: scope.drafts ?? this.deps.drafts,
       confirmDraft: scope.confirmDraft ?? this.deps.confirmDraft,
+      habits: scope.habits ?? this.deps.habits ?? new HabitsStore(),
     };
     const timer = new StageTimer();
     const messageId = randomUUID();
-    const session = await deps.sessions.get(req.sessionId, ctx.userId);
+    const [session, habits] = await Promise.all([deps.sessions.get(req.sessionId, ctx.userId), deps.habits.get(ctx.orgId, ctx.userId)]);
     deps.metrics.messages += 1;
 
     try {
@@ -160,7 +165,7 @@ export class Agent {
           const jev = await timer.time("jev1", () => deps.jev.evaluate(built.state as unknown as EntryType, built.questions));
           routing = { meta: built.meta, jev };
         }
-        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId, activeFocus(session, this.now().getTime())).run();
+        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId, activeFocus(session, this.now().getTime()), habits).run();
         intent = interpretation.intent;
         decisions = interpretation.decisions;
         plan = interpretation.plan;
@@ -187,7 +192,12 @@ export class Agent {
         outcome,
       };
 
-      session.focus = nextFocus(plan, outcome, session.focus, this.now().getTime());
+      const previousFocus = session.focus;
+      session.focus = nextFocus(plan, outcome, previousFocus, this.now().getTime());
+      // Se aprende de lo que el usuario consulta o propone (locales y productos concretos).
+      if (session.focus && session.focus !== previousFocus && (outcome.kind === "consulta" || outcome.kind === "borrador")) {
+        await deps.habits.record(ctx.orgId, ctx.userId, { locationIds: session.focus.locationIds, productIds: session.focus.productIds }).catch(() => undefined);
+      }
 
       const written = await timer.time("redaccion", () => deps.writer.write(report, emit));
       deps.sessions.addTurn(session, { role: "user", text: message });

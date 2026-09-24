@@ -1,6 +1,7 @@
 // Estado del asistente en Supabase (migración 0006): sesiones y borradores, con el JWT del usuario.
 // En Vercel cada petición puede ir a otra instancia; la memoria solo es una caché.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Habits, HabitsPersistence } from "../agent/habits";
 import type { SerializedSession, SessionPersistence } from "../agent/session";
 import type { ConfirmResponse } from "../drafts/confirm";
 import type { DraftPersistence, StoredDraft } from "../drafts/store";
@@ -20,6 +21,21 @@ export class SupabaseSessionPersistence implements SessionPersistence {
       .from("copilot_sessions")
       .upsert({ id: sessionId, org_id: orgId, user_id: session.userId, state: session, updated_at: new Date().toISOString() });
     if (error) throw new DataError("No se pudo guardar la sesión del asistente", { cause: error });
+  }
+}
+
+export class SupabaseHabitsPersistence implements HabitsPersistence {
+  constructor(private readonly db: SupabaseClient) {}
+
+  async load(orgId: string, userId: string): Promise<Habits | null> {
+    const { data, error } = await this.db.from("copilot_profiles").select("habits").eq("org_id", orgId).eq("user_id", userId).maybeSingle();
+    if (error || !data) return null;
+    const habits = data.habits as Partial<Habits>;
+    return { locations: habits.locations ?? {}, products: habits.products ?? {} };
+  }
+
+  async save(orgId: string, userId: string, habits: Habits): Promise<void> {
+    await this.db.from("copilot_profiles").upsert({ org_id: orgId, user_id: userId, habits, updated_at: new Date().toISOString() });
   }
 }
 

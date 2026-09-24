@@ -77,6 +77,7 @@ Las migraciones se aplican en orden y se pueden repetir sin error.
 | 0012 | Pedidos a proveedor |
 | 0013 | Limpieza de la 0010, por si se llegó a aplicar |
 | 0014 | Permisos de tabla explícitos para usuarios autenticados (RLS sigue decidiendo las filas) |
+| 0015 | Hábitos del asistente por usuario (locales y productos más usados) |
 
 **Aplicar en el proyecto real:** `npm run db:bundle -- 0008` genera `supabase/scripts/aplicar.sql` con las migraciones desde la 0008, en una sola transacción. Se pega en Supabase → SQL Editor → Run.
 

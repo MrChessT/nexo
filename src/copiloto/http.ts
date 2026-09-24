@@ -18,7 +18,8 @@ import { DataError, pingSupabase, userClient } from "./supabase/client";
 import { SupabaseContext } from "./supabase/context";
 import { SupabaseDataSource } from "./supabase/data-source";
 import { memoizeSource } from "./supabase/memo-source";
-import { SupabaseDraftPersistence, SupabaseSessionPersistence } from "./supabase/state";
+import { SupabaseDraftPersistence, SupabaseHabitsPersistence, SupabaseSessionPersistence } from "./supabase/state";
+import { HabitsStore } from "./agent/habits";
 import { computeReorder, InventoryTools } from "./tools/tools";
 
 export interface RequestUser extends AuthUser {
@@ -46,6 +47,7 @@ function scopeFor(user: RequestUser) {
     audit: new CompositeAuditSink([new ConsoleAuditSink(), new SupabaseAuditSink(db)]),
     sessions: new SessionStore(new SupabaseSessionPersistence(db)),
     drafts: new DraftStore(new SupabaseDraftPersistence(db)),
+    habits: new HabitsStore(new SupabaseHabitsPersistence(db)),
     writer: new SupabaseInventoryWriter(db),
   };
 }
@@ -90,6 +92,7 @@ async function chat(request: Request, user: RequestUser): Promise<Response> {
             audit: scope.audit,
             sessions: scope.sessions,
             drafts: scope.drafts,
+            habits: scope.habits,
             // «Sí, adelante»: mismo servicio que el botón, con el rol comprobado sobre datos frescos.
             confirmDraft: async (draftId) => {
               const fresh = await loadContext(user, true);

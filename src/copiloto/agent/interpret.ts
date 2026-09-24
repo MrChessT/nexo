@@ -23,6 +23,7 @@ import type { JevAnswer } from "../jev/client";
 import type { ToolName } from "../tools/tools";
 import type { RoutingMeta } from "./routing";
 import type { Focus } from "./session";
+import { preferredLocation, type Habits } from "./habits";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
 
 export interface ClarifyPlan {
@@ -145,7 +146,14 @@ export class Interpreter {
     private readonly pageLocationId: string | undefined,
     /** Foco vigente de la conversación (si lo hay). */
     private readonly focus?: Focus,
+    /** Hábitos del usuario (locales y productos más usados). */
+    private readonly habits?: Habits,
   ) {}
+
+  /** Local habitual del usuario, si lo tiene claro (se propone marcado para revisar). */
+  private habitualLocation(): string | undefined {
+    return preferredLocation(this.habits, this.ctx.locations.map((l) => l.id));
+  }
 
   /** ¿El mensaje continúa el anterior? Solo si hay foco y Jev lo ve con seguridad suficiente. */
   private followsUp(): boolean {
@@ -332,7 +340,10 @@ export class Interpreter {
           type: "clarify",
           field: "producto",
           question: rs.segment.amount !== null ? `¿Cuál de estos productos es «${rs.segment.text}»?` : "¿Cuál de estos productos?",
-          options: family.slice(0, 4).map((p) => ({ id: p.name, label: p.name, probability: null })),
+          options: [...family]
+            .sort((a, b) => (this.habits?.products[b.id] ?? 0) - (this.habits?.products[a.id] ?? 0))
+            .slice(0, 4)
+            .map((p) => ({ id: p.name, label: p.name, probability: null })),
           segmentIndex: i,
         };
       }
@@ -456,8 +467,8 @@ export class Interpreter {
           locationOutcome = "confirmar";
         }
       }
-      if (!locationId && this.pageLocationId) {
-        locationId = this.pageLocationId;
+      if (!locationId && (this.pageLocationId ?? this.habitualLocation())) {
+        locationId = (this.pageLocationId ?? this.habitualLocation())!;
         locationOutcome = "confirmar";
       }
       if (!locationId || locationOutcome === "preguntar") {
@@ -477,8 +488,8 @@ export class Interpreter {
     }
 
     if (accion === "cambiar_minimo") {
-      if (!locationId && this.pageLocationId) {
-        locationId = this.pageLocationId;
+      if (!locationId && (this.pageLocationId ?? this.habitualLocation())) {
+        locationId = (this.pageLocationId ?? this.habitualLocation())!;
         locationOutcome = "confirmar";
       }
       if (!locationId || locationOutcome === "preguntar") {
@@ -513,6 +524,9 @@ export class Interpreter {
       locationOutcome = "actuar";
     } else if (!resolvedLocation && this.pageLocationId) {
       resolvedLocation = this.pageLocationId;
+      locationOutcome = "confirmar";
+    } else if (!resolvedLocation && this.habitualLocation()) {
+      resolvedLocation = this.habitualLocation()!;
       locationOutcome = "confirmar";
     }
     if (!resolvedLocation || locationOutcome === "preguntar") {

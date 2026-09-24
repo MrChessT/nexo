@@ -18,6 +18,7 @@ import { DraftStore } from "../drafts/store";
 import { ConfirmService } from "../drafts/confirm";
 import { FixtureWriter } from "../dev/fixture-writer";
 import { randomUUID } from "node:crypto";
+import { HabitsStore } from "../agent/habits";
 
 export const NOW = new Date("2026-09-23T12:00:00Z"); // miércoles
 
@@ -137,6 +138,8 @@ export function makeAgent(jev: JevPort, provider: WriterProvider | null = null) 
     selfConsistency: true,
     drafts,
     builder: new DraftBuilder(),
+    // Memoria de hábitos aislada por agente: los tests no se contaminan entre sí.
+    habits: new HabitsStore(undefined, new LruCache(100, 60_000)),
     confirmDraft: (draftId) => confirmService.confirm({ orgId: ORG_ID, draftId, idempotencyKey: randomUUID() }, fixtureContext(), writer),
     now: () => NOW,
   });
