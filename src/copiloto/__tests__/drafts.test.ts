@@ -100,7 +100,7 @@ describe("borradores desde el chat", () => {
       cantidad_ok_0: 0.95,
       cantidad_ok_1: 0.95,
     };
-    const message = "pasa 6 cocas y 2 botellas de ginebra de Parador al Vivero";
+    const message = "pasa 6 unidades de coca y 2 botellas de ginebra de Parador al Vivero";
     const staff = find(await run(makeAgent(new FakeJev([script, { coherencia: 0.9 }])).agent, chat(message), "staff"), "draft") as TransferDraft;
     expect(staff).toMatchObject({ kind: "traspaso", fromLocationId: PARADOR!.id, toLocationId: VIVERO!.id, send: false });
     expect(staff.lines.map((l) => [l.productName, l.qtyBase, l.baseUnit])).toEqual([
@@ -110,6 +110,16 @@ describe("borradores desde el chat", () => {
     expect(staff.warnings).toContain("Se guardará como borrador: enviarlo requiere rol de encargado.");
     const manager = find(await run(makeAgent(new FakeJev([script, { coherencia: 0.9 }])).agent, chat(message), "manager"), "draft") as TransferDraft;
     expect(manager.send).toBe(true);
+  });
+
+  it("cantidad sin unidad («6 cocas») → pregunta el formato en vez de suponerlo", async () => {
+    const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: "Parador", local_destino: "Vivero", producto_0: { winner: "Coca-Cola 20 cl", p: 0.99 }, cantidad_ok_0: 0.95 };
+    const { agent } = makeAgent(new FakeJev([script, { coherencia: 0.9 }]));
+    const clarify = find(await run(agent, chat("pasa 6 cocas de Parador al Vivero")), "clarify")!;
+    expect(clarify).toMatchObject({ field: "cantidad", question: "¿En qué formato son las 6 de Coca-Cola 20 cl?" });
+    expect(clarify.options.map((o) => o.label)).toEqual(["Unidades sueltas", "Caja 24 ud"]);
+    const events = await run(agent, chat("Unidades sueltas", { clarification: { clarifyId: clarify.clarifyId, optionId: "pack:base" } }));
+    expect((find(events, "draft") as TransferDraft).lines[0]).toMatchObject({ qtyBase: "6", baseUnit: "ud" });
   });
 
   it("origen y destino iguales → pregunta el destino", async () => {
@@ -253,7 +263,7 @@ describe("confirmación", () => {
   it("traspaso: si send_transfer falla, borra el borrador creado", async () => {
     const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: "Parador", local_destino: "Vivero", producto_0: { winner: "Coca-Cola 20 cl", p: 0.99 }, cantidad_ok_0: 0.95 };
     const { agent, drafts, audit } = makeAgent(new FakeJev([script, { coherencia: 0.9 }]));
-    const draft = find(await run(agent, chat("pasa 6 cocas al Vivero")), "draft") as TransferDraft;
+    const draft = find(await run(agent, chat("pasa 6 unidades de coca al Vivero")), "draft") as TransferDraft;
     const writer = new FixtureWriter();
     writer.failOn = { method: "sendTransfer", code: "forbidden" };
     const result = await new ConfirmService(drafts, audit, () => NOW).confirm({ orgId: ORG_ID, draftId: draft.draftId, idempotencyKey: key(1) }, fixtureContext("manager"), writer);

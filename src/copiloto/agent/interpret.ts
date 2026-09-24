@@ -32,6 +32,8 @@ export interface ClarifyPlan {
   question: string;
   options: Array<{ id: string; label: string; probability: number | null }>;
   segmentIndex?: number;
+  /** La pregunta pide repetir la orden entera: lo que se escriba es un mensaje nuevo, no un añadido. */
+  restart?: boolean;
 }
 
 export interface ResolvedProduct {
@@ -75,6 +77,8 @@ export interface ActionPlan {
   products: ResolvedProduct[];
   motivo: MotivoMerma;
   ambiguous: number;
+  /** Jev veía que faltaba algo aunque cada dato estaba claro: el borrador lo avisa. */
+  reviewAll?: boolean;
 }
 
 /** Operaciones sobre el catálogo (no mueven stock). */
@@ -150,7 +154,7 @@ export class Interpreter {
     private readonly habits?: Habits,
   ) {}
 
-  /** Local habitual del usuario, si lo tiene claro (se propone marcado para revisar). */
+  /** Local habitual del usuario, si lo tiene claro (solo ordena las opciones al preguntar). */
   private habitualLocation(): string | undefined {
     return preferredLocation(this.habits, this.ctx.locations.map((l) => l.id));
   }
@@ -169,8 +173,18 @@ export class Interpreter {
   private choice(id: string): ChoiceResponse | undefined {
     const answer = asChoice(this.answers[id]);
     const override = this.overrides[id];
-    if (override !== undefined && answer) return forced(override, Object.keys(answer.probabilities));
+    // Una respuesta anterior solo cuenta si sigue siendo una de las opciones (el mensaje pudo cambiar).
+    if (override !== undefined && answer && override in answer.probabilities) return forced(override, Object.keys(answer.probabilities));
     return answer;
+  }
+
+  /** Opciones de local con el habitual del usuario primero (propuesto, nunca decidido). */
+  private locationOptions(ranked: RankedOption[]): RankedOption[] {
+    const habitual = this.habitualLocation();
+    const name = habitual ? this.ctx.locations.find((l) => l.id === habitual)?.name : undefined;
+    if (!name) return ranked;
+    const rest = ranked.filter((r) => r.option !== name);
+    return [{ option: name, probability: ranked.find((r) => r.option === name)?.probability ?? 0 }, ...rest];
   }
 
   private gate(id: string, decisionLabel: string, spec: GateSpec, valueLabel: (v: string) => string = label): ChoiceGate | null {
@@ -190,9 +204,11 @@ export class Interpreter {
   }
 
   private clarify(field: ClarifyField, question: string, ranked: RankedOption[], exclude: string[] = [], labeler: (v: string) => string = label, segmentIndex?: number): ClarifyPlan {
+    // Los locales son pocos: se ofrecen todos (hasta 6); del resto, las 3 opciones más probables.
+    const max = field === "local" || field === "local_destino" ? 6 : 3;
     const options = ranked
       .filter((r) => !exclude.includes(r.option))
-      .slice(0, 3)
+      .slice(0, max)
       .map((r) => ({ id: r.option, label: labeler(r.option), probability: Math.round(r.probability * 100) / 100 }));
     return { type: "clarify", field, question, options, ...(segmentIndex !== undefined ? { segmentIndex } : {}) };
   }
@@ -361,6 +377,14 @@ export class Interpreter {
       }
       const product = rs.candidates.get(g.choice);
       if (!product) continue;
+      // Cantidad escrita por el usuario al responder «¿qué cantidad?»: manda sobre la del mensaje.
+      const typedAmount = this.overrides[`cantidad_${i}`];
+      if (typedAmount !== undefined) {
+        const typedUnit = this.overrides[`unidad_texto_${i}`] ?? null;
+        this.decisions.push({ id: `cantidad_ok_${i}`, label: "Cantidad", value: `${typedAmount} ${typedUnit ?? ""}`.trim(), valueLabel: `${typedAmount} ${typedUnit ?? ""}`.trim(), probability: 1, confidence: null, gate: "actuar" });
+        resolved.push({ product, segmentIndex: i, amount: typedAmount, unit: typedUnit, price: rs.segment.price, quantityOutcome: "actuar", productOutcome: g.outcome });
+        continue;
+      }
       let quantityOutcome: GateOutcome | null = null;
       const q = asNoul(this.answers[`cantidad_ok_${i}`]);
       if (q && rs.segment.amount !== null) {
@@ -467,12 +491,12 @@ export class Interpreter {
           locationOutcome = "confirmar";
         }
       }
-      if (!locationId && (this.pageLocationId ?? this.habitualLocation())) {
-        locationId = (this.pageLocationId ?? this.habitualLocation())!;
+      if (!locationId && this.pageLocationId) {
+        locationId = this.pageLocationId;
         locationOutcome = "confirmar";
       }
       if (!locationId || locationOutcome === "preguntar") {
-        return this.clarify("local", "¿Para qué local es el pedido?", locGate?.ranked ?? [], [TODOS, NO_INDICADO], (key) => key);
+        return this.clarify("local", "¿Para qué local es el pedido?", this.locationOptions(locGate?.ranked ?? []), [TODOS, NO_INDICADO], (key) => key);
       }
       const products = this.resolveProducts(t.producto_borrador, true);
       if ("type" in products) return products;
@@ -488,12 +512,12 @@ export class Interpreter {
     }
 
     if (accion === "cambiar_minimo") {
-      if (!locationId && (this.pageLocationId ?? this.habitualLocation())) {
-        locationId = (this.pageLocationId ?? this.habitualLocation())!;
+      if (!locationId && this.pageLocationId) {
+        locationId = this.pageLocationId;
         locationOutcome = "confirmar";
       }
       if (!locationId || locationOutcome === "preguntar") {
-        return this.clarify("local", "¿En qué local?", locGate?.ranked ?? [], [TODOS, NO_INDICADO], (key) => key);
+        return this.clarify("local", "¿En qué local?", this.locationOptions(locGate?.ranked ?? []), [TODOS, NO_INDICADO], (key) => key);
       }
     }
     return { type: "catalogo", accion, locationId, locationOutcome, products };
@@ -525,13 +549,11 @@ export class Interpreter {
     } else if (!resolvedLocation && this.pageLocationId) {
       resolvedLocation = this.pageLocationId;
       locationOutcome = "confirmar";
-    } else if (!resolvedLocation && this.habitualLocation()) {
-      resolvedLocation = this.habitualLocation()!;
-      locationOutcome = "confirmar";
     }
+    // Sin local claro se pregunta; el habitual solo se ofrece como primera opción.
     if (!resolvedLocation || locationOutcome === "preguntar") {
       const question = accion === "traspaso" ? "¿Desde qué local sale la mercancía?" : "¿En qué local?";
-      return this.clarify("local", question, locGate?.ranked ?? [], [TODOS, NO_INDICADO], locationName);
+      return this.clarify("local", question, this.locationOptions(locGate?.ranked ?? []), [TODOS, NO_INDICADO], locationName);
     }
 
     let toLocationId: string | null = null;
@@ -558,14 +580,22 @@ export class Interpreter {
       }
     }
 
-    // Mucha ambigüedad percibida aunque cada entidad haya pasado su umbral: se pregunta antes de escribir.
+    // Mucha ambigüedad percibida. Si algún dato era dudoso, se pide repetir la orden. Si todos estaban
+    // claros (operación, locales, productos y cantidades), una pregunta genérica no ayuda: se prepara
+    // el borrador con un aviso (nada se ejecuta sin confirmarlo) y el formato, si falta, se pregunta aparte.
     const ambiguo = asNoul(this.answers.ambiguo);
-    if (ambiguo && accion !== "cierre_inventario" && Object.keys(this.overrides).length === 0 && gateNoulNo(ambiguo, t.ambiguo) === "preguntar") {
+    const allClear =
+      locationOutcome === "actuar" &&
+      toLocationOutcome === "actuar" &&
+      products.every((p) => (p.productOutcome ?? "actuar") === "actuar" && (p.quantityOutcome ?? "actuar") === "actuar");
+    const tooAmbiguous = !!ambiguo && accion !== "cierre_inventario" && Object.keys(this.overrides).length === 0 && gateNoulNo(ambiguo, t.ambiguo) === "preguntar";
+    if (tooAmbiguous && !allClear) {
       return {
         type: "clarify",
         field: "tipo_accion",
         question: "No tengo claro qué quieres registrar. ¿Puedes indicarme la operación, el producto, la cantidad y el local?",
         options: [],
+        restart: true,
       };
     }
 
@@ -582,6 +612,7 @@ export class Interpreter {
       products,
       motivo,
       ambiguous,
+      ...(tooAmbiguous ? { reviewAll: true } : {}),
     };
   }
 }

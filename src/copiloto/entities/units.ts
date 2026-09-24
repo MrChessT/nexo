@@ -32,6 +32,22 @@ const PACK_HINTS: Record<string, string[]> = {
   tercio: ["tercio", "botellin", "33"],
 };
 
+/** ¿Este formato es de esa unidad? ("caja" → "Caja 6 botellas"). */
+export function packMatchesUnit(pack: Pick<Pack, "name">, unit: string): boolean {
+  const name = normalize(pack.name);
+  return (PACK_HINTS[unit] ?? [unit]).some((hint) => name.includes(hint));
+}
+
+/**
+ * Lecturas posibles de una cantidad sin unidad («5 de ron»): los formatos del producto (el de conteo
+ * primero) y, si se cuenta por unidades y ningún formato es la unidad suelta, también esta ("base").
+ */
+export function unitReadings(product: Product): Array<Pack | "base"> {
+  const packs = [...product.packs].sort((a, b) => Number(b.isCountDefault) - Number(a.isCountDefault) || Number(b.isPurchaseDefault) - Number(a.isPurchaseDefault));
+  if (product.dimension !== "count" || packs.some((p) => new Decimal(p.qtyBase).eq(1))) return packs;
+  return ["base", ...packs];
+}
+
 function defaultPack(product: Product): Pack | null {
   const active = product.packs;
   return (
@@ -58,7 +74,8 @@ export function toBase(amountText: string, unit: string | null, product: Product
 
   if (unit === "ud" || unit === null) {
     if (product.dimension === "count") return { ok: true, qtyBase: amount, pack: null, assumed: unit === null };
-    // "2 ron" o "2 ud de ron" en un producto por volumen: se entiende el formato habitual (botella).
+    // "2 ud de ron" en un producto por volumen: se entiende el formato habitual (botella). Sin unidad,
+    // los borradores preguntan antes el formato si hay varios (ver resolveQuantity).
     const pack = defaultPack(product);
     if (pack) return { ok: true, qtyBase: amount.mul(pack.qtyBase), pack, assumed: true };
     return product.packs.length > 1 ? { ok: false, reason: "ambiguous_pack", options: product.packs } : { ok: false, reason: "unknown_unit" };
@@ -86,6 +103,21 @@ export function toBase(amountText: string, unit: string | null, product: Product
     if (pack) return { ok: true, qtyBase: amount.mul(pack.qtyBase), pack, assumed: true };
   }
   return { ok: false, reason: "unknown_unit" };
+}
+
+/**
+ * Cantidad de stock como se cuenta en barra: en el formato de conteo («3 × Botella 70 cl») y, si no es
+ * la unidad base, también en unidad base entre paréntesis («3 × Botella 70 cl (2,1 l)»). Sin formato de
+ * conteo (o si es un kilo), en unidad base.
+ */
+export function formatStock(qty: Decimal.Value, product: Pick<Product, "baseUnit" | "packs">, withBase = true): string {
+  const value = new Decimal(qty);
+  const pack = product.packs.find((p) => p.isCountDefault);
+  if (!pack || /^(kg|g|l|ml|cl|unidad|ud)$/i.test(pack.name.trim()) || new Decimal(pack.qtyBase).lte(0) || new Decimal(pack.qtyBase).eq(1)) {
+    return formatBase(value, product.baseUnit);
+  }
+  const packs = `${formatDecimal(value.div(pack.qtyBase), 2)} × ${pack.name}`;
+  return withBase ? `${packs} (${formatBase(value, product.baseUnit)})` : packs;
 }
 
 /** "1400" ml → "1,4 l" para mostrar. Solo formato; el valor sigue siendo decimal exacto. */

@@ -57,6 +57,8 @@ npm run check        # lint + tipos + tests + build (lo mismo que el CI)
 - `npm test`: tests de la app y del asistente, con Jev y LLM simulados.
 - `npm run copiloto:eval`: set de frases contra Jev real (`--desde N`, `--lote N`).
 - `npm run copiloto:probe -- "frase"`: probabilidades de Jev para una frase (afinar el catálogo).
+- `npm run copiloto:bateria`: frases reales contra el catálogo de Vivero 55 sin Jev (búsqueda de productos, cantidades y respuestas escritas). También corre en `npm test`.
+- `npm run copiloto:conversaciones`: conversaciones de varios turnos de principio a fin (aclaraciones, borradores, confirmación por chat, desgloses). Sin opciones usa un Jev simulado (también en `npm test`); con `-- --real`, el Jev real, y escribe `docs/copiloto/CONVERSACIONES.md`.
 - **CI** (GitHub Actions, cada push y PR): la app y la base de datos. La base de datos se levanta en local con todas las migraciones y pasa `supabase/tests`.
 
 Reglas del código: el stock solo cambia mediante RPC y `stock_movements` es inmutable; las cantidades se guardan en unidad base (ml, g, ud) y nunca se calculan con `number`; todo va con el JWT del usuario y RLS, sin service role.

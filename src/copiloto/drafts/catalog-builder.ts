@@ -275,7 +275,7 @@ export class CatalogDraftBuilder {
 
     // Parecidos: activos y archivados, por coincidencia léxica. Jev decide si son el mismo artículo.
     const pool: Array<{ ref: NamedRef; category: string | null; formats: string[]; archived: boolean; score: number }> = [
-      ...ctx.products.map((p) => ({ ref: { id: p.id, name: p.name }, category: p.category, formats: p.packs.map((k) => k.name), archived: false, score: lexicalScore(name, p) })),
+      ...ctx.products.map((p) => ({ ref: { id: p.id, name: p.name }, category: p.category, formats: p.packs.map((k) => k.name), archived: false, score: lexicalScore(name, p, { notes: false }) })),
       ...ctx.archivedProducts.map((a) => ({
         ref: a,
         category: null,

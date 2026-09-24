@@ -3,7 +3,7 @@
 import Decimal from "decimal.js";
 import type { Herramienta } from "../jev/catalog";
 import type { Product, SessionContext } from "../domain";
-import { formatBase, formatDecimal, formatMoney } from "../entities/units";
+import { formatBase, formatDecimal, formatMoney, formatStock } from "../entities/units";
 import { addDays, businessDay, formatDay } from "./periods";
 import type { EvalItem, InventoryDataSource, MovementType, ToolParams, ToolResult, ToolRow } from "./types";
 
@@ -48,9 +48,13 @@ function pct(part: Decimal, whole: Decimal): Decimal | null {
   return whole.isZero() ? null : part.div(whole).mul(100);
 }
 
-function finish(tool: ToolName, rows: ToolRow[], totals: Record<string, string>, evalItems: EvalItem[] = []): ToolResult {
-  return { tool, rows: rows.slice(0, MAX_ROWS), totals, count: rows.length, truncated: rows.length > MAX_ROWS, evalItems };
+function finish(tool: ToolName, rows: ToolRow[], totals: Record<string, string>, evalItems: EvalItem[] = [], max = MAX_ROWS): ToolResult {
+  return { tool, rows: rows.slice(0, max), totals, count: rows.length, truncated: rows.length > max, evalItems };
 }
+
+/** Filas del desglose por espacio: caben más (varias secciones con pocos productos cada una). */
+const MAX_AREA_ROWS = 60;
+const PER_AREA = 6;
 
 /** Reposición en crudo (decimal.js): la usan la herramienta query_reorder y la analítica. */
 export async function computeReorder(source: InventoryDataSource, params: ToolParams, ctx: SessionContext) {
@@ -224,7 +228,20 @@ export class InventoryTools implements Tools {
 
     type Line = { locationId: string; areaName: string | null; product: Product; qty: Decimal; value: Decimal; min: Decimal | null };
     const lines: Line[] = [];
-    if (params.areaId) {
+    // «¿Qué hay en cada sección?»: stock de cada espacio de los locales consultados.
+    const byArea = !params.areaId && params.byArea === true;
+    if (byArea) {
+      const areas = ctx.areas.filter((a) => params.locationIds.includes(a.locationId));
+      const perArea = await Promise.all(areas.map(async (area) => ({ area, balances: await this.source.areaBalances(area.id, productIds) })));
+      for (const { area, balances } of perArea) {
+        for (const b of balances) {
+          const product = products.get(b.productId);
+          const qty = new Decimal(b.qty);
+          if (!product || qty.isZero()) continue;
+          lines.push({ locationId: area.locationId, areaName: area.name, product, qty, value: qty.mul(b.avgCost), min: null });
+        }
+      }
+    } else if (params.areaId) {
       const area = ctx.areas.find((a) => a.id === params.areaId);
       for (const b of await this.source.areaBalances(params.areaId, productIds)) {
         const product = products.get(b.productId);
@@ -250,20 +267,67 @@ export class InventoryTools implements Tools {
     const totalValue = lines.reduce((acc, l) => acc.plus(l.value), new Decimal(0));
     const belowMin = lines.filter((l) => l.min !== null && l.qty.lt(l.min));
 
+    const totals = { productos: String(lines.length), valor_total: formatMoney(totalValue), bajo_minimo: String(belowMin.length) };
+
+    if (byArea) {
+      const order = new Map(ctx.areas.map((a, i) => [`${a.locationId}:${a.name}`, i]));
+      const sorted = [...lines].sort((a, b) => (order.get(`${a.locationId}:${a.areaName}`) ?? 0) - (order.get(`${b.locationId}:${b.areaName}`) ?? 0) || b.value.cmp(a.value));
+      // Todas las secciones, con sus productos de más valor (como mucho PER_AREA en cada una).
+      const perArea = new Map<string, Line[]>();
+      for (const l of sorted) perArea.set(`${l.locationId}:${l.areaName}`, [...(perArea.get(`${l.locationId}:${l.areaName}`) ?? []), l]);
+      const rows: ToolRow[] = [...perArea.values()].flatMap((items) =>
+        items.slice(0, PER_AREA).map((l) => ({
+          producto: l.product.name,
+          local: locationName(ctx, l.locationId),
+          espacio: l.areaName,
+          cantidad: formatStock(l.qty, l.product, false),
+          valor: formatMoney(l.value),
+          minimo: null,
+          bajo_minimo: false,
+          productos_espacio: String(items.length),
+        })),
+      );
+      return finish("query_stock", rows, { ...totals, desglose: "espacio", espacios: String(perArea.size) }, [], MAX_AREA_ROWS);
+    }
+
+    // Varios locales: una fila por producto con el total y el reparto por local.
+    if (!params.areaId && new Set(lines.map((l) => l.locationId)).size > 1) {
+      const groups = new Map<string, { product: Product; qty: Decimal; value: Decimal; low: boolean; parts: Line[] }>();
+      for (const l of lines) {
+        const g = groups.get(l.product.id) ?? { product: l.product, qty: new Decimal(0), value: new Decimal(0), low: false, parts: [] };
+        g.qty = g.qty.plus(l.qty);
+        g.value = g.value.plus(l.value);
+        g.low ||= l.min !== null && l.qty.lt(l.min);
+        g.parts.push(l);
+        groups.set(l.product.id, g);
+      }
+      const sorted = [...groups.values()].sort((a, b) => Number(b.low) - Number(a.low) || b.value.cmp(a.value) || a.product.name.localeCompare(b.product.name));
+      const rows: ToolRow[] = sorted.map((g) => ({
+        producto: g.product.name,
+        local: null,
+        espacio: null,
+        cantidad: formatStock(g.qty, g.product),
+        desglose: [...g.parts]
+          .sort((a, b) => locationName(ctx, a.locationId).localeCompare(locationName(ctx, b.locationId)))
+          .map((l) => `${locationName(ctx, l.locationId)} ${formatStock(l.qty, l.product, false)}${l.min !== null && l.qty.lt(l.min) ? " ⚠" : ""}`)
+          .join(" · "),
+        valor: formatMoney(g.value),
+        minimo: null,
+        bajo_minimo: g.low,
+      }));
+      return finish("query_stock", rows, { ...totals, productos: String(groups.size), desglose: "local" });
+    }
+
     const rows: ToolRow[] = lines.map((l) => ({
       producto: l.product.name,
       local: locationName(ctx, l.locationId),
       espacio: l.areaName,
-      cantidad: formatBase(l.qty, l.product.baseUnit),
+      cantidad: formatStock(l.qty, l.product),
       valor: formatMoney(l.value),
-      minimo: l.min ? formatBase(l.min, l.product.baseUnit) : null,
+      minimo: l.min ? formatStock(l.min, l.product, false) : null,
       bajo_minimo: l.min !== null && l.qty.lt(l.min),
     }));
-    return finish("query_stock", rows, {
-      productos: String(lines.length),
-      valor_total: formatMoney(totalValue),
-      bajo_minimo: String(belowMin.length),
-    });
+    return finish("query_stock", rows, totals);
   }
 
   private async movements(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {

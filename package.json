@@ -17,7 +17,9 @@
     "db:lint": "supabase db lint --local",
     "db:bundle": "node scripts/bundle-migrations.mjs",
     "copiloto:eval": "tsx --env-file-if-exists=.env.local src/copiloto/eval/run-eval.ts",
-    "copiloto:probe": "tsx --env-file-if-exists=.env.local src/copiloto/eval/probe.ts"
+    "copiloto:probe": "tsx --env-file-if-exists=.env.local src/copiloto/eval/probe.ts",
+    "copiloto:bateria": "tsx src/copiloto/eval/bateria.ts",
+    "copiloto:conversaciones": "tsx --env-file-if-exists=.env.local src/copiloto/eval/conversaciones.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

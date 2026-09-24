@@ -25,7 +25,8 @@ export type ReportOutcome =
   | { kind: "consulta"; tool: ToolName; scope: Scope; result: ToolResult; evaluations: Evaluation[]; notices: string[] }
   | { kind: "navegacion"; navigate: NavigateEvent; destino: string }
   | { kind: "aclaracion"; clarify: ClarifyEvent }
-  | { kind: "conversacion" }
+  /** charla: saludo, despedida o agradecimiento (respuesta corta en vez de la ayuda). */
+  | { kind: "conversacion"; charla?: "hola" | "gracias" | "adios" }
   | { kind: "fuera_de_ambito" }
   | { kind: "bloqueado" }
   | { kind: "borrador"; draft: Draft }

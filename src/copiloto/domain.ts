@@ -29,6 +29,8 @@ export interface Product {
   dimension: Dimension;
   baseUnit: BaseUnit;
   category: string | null;
+  /** Marca, tipo («Ginebra»), formato y nombre en carta: ayudan a encontrar el producto. */
+  notes?: string | null;
   packs: Pack[];
 }
 

@@ -15,6 +15,10 @@ export interface PendingClarify {
   /** Índice de segmento cuando field === "producto". */
   segmentIndex?: number;
   optionIds: string[];
+  /** Texto de cada opción (mismo orden que optionIds), para reconocerla si el usuario la escribe. */
+  optionLabels?: string[];
+  /** La pregunta pedía repetir la orden: lo que se escriba es un mensaje nuevo. */
+  restart?: boolean;
   message: string;
   page: AppRoute;
   pageContext?: { locationId?: string; areaId?: string };

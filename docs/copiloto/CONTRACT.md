@@ -262,9 +262,9 @@ La confirmación se ejecuta con el JWT del usuario. Las RPC y el RLS vuelven a c
 | Caso | Qué envía la app |
 | --- | --- |
 | Opción de la lista | `optionId` = el `id` de la opción. |
-| Formato de cantidad | Las opciones llegan como `"pack:<uuid>"`; la app devuelve ese mismo `id`. |
+| Formato de cantidad | Las opciones llegan como `"pack:<uuid>"` (o `"pack:base"`, unidades sueltas); la app devuelve ese mismo `id`. Se pregunta también cuando la cantidad no trae unidad («5 de ron») y el producto admite varias lecturas. |
 | Cantidad dudosa | La opción `"si"` confirma la cantidad que se entendió. |
-| Texto libre | `optionId: "otra"` y el texto en `freeText`. También se usa cuando `options` viene vacío. El servicio lo añade al mensaje original y vuelve a enrutar. |
+| Texto libre | `optionId: "otra"` y el texto en `freeText`. También se usa cuando `options` viene vacío. El servicio lo lee primero como respuesta a esa pregunta (una opción escrita, «sí», una cantidad como «5 cajas») sin volver a llamar a Jev. Si no encaja: en preguntas sobre un dato de la orden (producto, cantidad, local, espacio, formato) lo añade al mensaje original y vuelve a enrutar; en el resto (operación, consulta, pantalla, confirmar, «repítemelo») lo trata como un mensaje nuevo. |
 
 ## Gráficas y análisis
 

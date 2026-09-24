@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.8";
+export const CATALOG_VERSION = "2026-09-24.9";
 
 // Opciones fijas --------------------------------------------------------------
 

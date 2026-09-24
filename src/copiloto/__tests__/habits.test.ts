@@ -20,15 +20,18 @@ describe("hábitos del usuario", () => {
     expect(preferredLocation(recordUse(emptyHabits(), { locationIds: ["otro"], productIds: [] }), [PARADOR!.id])).toBeUndefined();
   });
 
-  it("una merma sin local va al local habitual, marcado para revisar", async () => {
+  it("una merma sin local pregunta el local, con el habitual como primera opción", async () => {
     const stock: Script = { intent: "consultar", intent_alt: "leer", herramienta: "query_stock", local: "Parador", producto_0: BARCELO.name };
     const waste: Script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "merma", producto_0: BARCELO.name, cantidad_ok_0: 0.97, motivo_merma: "rotura" };
     const jev = new FakeJev([stock, stock, stock, stock, stock, waste, { coherencia: 0.95 }]);
     const { agent } = makeAgent(jev);
     for (let i = 0; i < 5; i += 1) await run(agent, chat("¿cuánto Barceló queda en Parador?"));
-    const draft = find(await run(agent, chat("se han roto 2 botellas de Barceló")), "draft") as WasteDraft;
+    const clarify = find(await run(agent, chat("se han roto 2 botellas de Barceló")), "clarify")!;
+    expect(clarify.field).toBe("local");
+    expect(clarify.options[0]!.id).toBe("Parador");
+    const draft = find(await run(agent, chat("Parador", { clarification: { clarifyId: clarify.clarifyId, optionId: "Parador" } })), "draft") as WasteDraft;
     expect(draft.locationName).toBe("Parador");
-    expect(draft.warnings).toContain("Revisa el local.");
+    expect(draft.warnings).not.toContain("Revisa el local.");
   });
 
   it("sin hábitos, la misma merma pregunta el local", async () => {

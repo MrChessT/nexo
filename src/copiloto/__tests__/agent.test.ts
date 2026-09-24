@@ -76,8 +76,8 @@ describe("enrutado del agente", () => {
 
     const second = await run(agent, chat("", { message: BRUGAL, clarification: { clarifyId: clarify.clarifyId, optionId: BRUGAL } }));
     const text = find(second, "done")!.text;
-    expect(text).toContain("4,9 l");
-    expect(text).toContain("he consultado todos");
+    expect(text).toContain("7 × Botella 70 cl (4,9 l)");
+    expect(text).toContain("te lo muestro de todos, desglosado por local");
   });
 
   it("inyección → bloqueo sin herramientas y registrado en auditoría", async () => {
@@ -150,9 +150,8 @@ describe("atajos deterministas", () => {
     expect(clarify.options.map((o) => o.id).slice(0, 2).sort()).toEqual([BARCELO, BRUGAL]);
     const events = await run(agent, chat("", { message: BARCELO, clarification: { clarifyId: clarify.clarifyId, optionId: BARCELO } }));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Ron Barceló Añejo 70 cl (Parador): 2,1 l");
-    expect(text).toContain("Ron Barceló Añejo 70 cl (Pickels): 700 ml");
-    expect(text).toContain("valor total 60,00 €");
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 × Botella 70 cl (2,8 l) en total (60,00 €).");
+    expect(text).toContain("Parador 3 × Botella 70 cl ⚠ · Pickels 1 × Botella 70 cl");
     expect(jev.calls).toHaveLength(0);
   });
 
