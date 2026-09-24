@@ -79,6 +79,7 @@ type SerializedClarify = Omit<PendingClarify, "routing"> & {
       segments: Array<{ segment: RoutingMeta["segments"][number]["segment"]; candidates: Array<[string, Product]>; scores: Array<[string, number]> }>;
       locationKeys: Array<[string, string]>;
       areaKeys: Array<[string, string]>;
+      message?: string;
     };
   };
 };
@@ -111,6 +112,7 @@ export function serializeSession(session: Session): SerializedSession {
               segments: routing.meta.segments.map((s) => ({ segment: s.segment, candidates: [...s.candidates.entries()], scores: [...s.scores.entries()] })),
               locationKeys: [...routing.meta.locationKeys.entries()],
               areaKeys: [...routing.meta.areaKeys.entries()],
+              ...(routing.meta.message !== undefined ? { message: routing.meta.message } : {}),
             },
           },
         },
@@ -138,6 +140,7 @@ export function deserializeSession(data: SerializedSession): Session {
                 segments: routing.meta.segments.map((s) => ({ segment: s.segment, candidates: new Map(s.candidates), scores: new Map(s.scores) })),
                 locationKeys: new Map(routing.meta.locationKeys),
                 areaKeys: new Map(routing.meta.areaKeys),
+                ...(routing.meta.message !== undefined ? { message: routing.meta.message } : {}),
               },
             },
           } as PendingClarify,

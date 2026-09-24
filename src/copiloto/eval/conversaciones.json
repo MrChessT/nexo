@@ -368,5 +368,56 @@
         }
       }
     ]
+  },
+  {
+    "nombre": "Ficha de producto",
+    "turnos": [
+      {
+        "usuario": "¿a cuánto compramos el beefeater?",
+        "jev": {
+          "intent": "consultar",
+          "intent_alt": "leer",
+          "herramienta": "query_product",
+          "producto_0": {
+            "winner": "Beefeater",
+            "p": 0.99
+          }
+        },
+        "espera": {
+          "consulta": true,
+          "texto": "Beefeater (Destilados para gamas)"
+        }
+      }
+    ]
+  },
+  {
+    "nombre": "Traspaso recibido",
+    "turnos": [
+      {
+        "usuario": "ha llegado el traspaso del Parador",
+        "jev": {
+          "intent": "proponer_accion",
+          "intent_alt": "cambiar",
+          "tipo_accion": {
+            "winner": "recibir_traspaso",
+            "p": 0.97
+          },
+          "local": "Parador"
+        },
+        "espera": {
+          "borrador": "documento",
+          "titulo": "Recibir traspaso: Parador → Vivero"
+        }
+      },
+      {
+        "usuario": "sí, adelante",
+        "jev": {
+          "borrador": "confirmar"
+        },
+        "espera": {
+          "resuelto": "confirmado"
+        }
+      }
+    ]
   }
 ]

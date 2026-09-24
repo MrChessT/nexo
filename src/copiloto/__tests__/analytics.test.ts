@@ -63,7 +63,7 @@ describe("gráficas en el chat", () => {
   it("«llévame a las gráficas de mermas» navega a /informes con la vista de mermas", async () => {
     const jev = new FakeJev([{ intent: "navegar", intent_alt: "leer", destino: "/informes", herramienta: "query_movements", periodo: "semana" }]);
     const { agent } = makeAgent(jev);
-    const nav = find(await run(agent, chat("llévame a las gráficas de consumo")), "navigate")!;
+    const nav = find(await run(agent, chat("llévame a las gráficas de consumo de esta semana")), "navigate")!;
     expect(nav).toEqual({ route: "/informes", filters: { view: "consumo", days: 7 }, auto: true });
   });
 });

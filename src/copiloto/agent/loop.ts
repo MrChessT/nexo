@@ -16,7 +16,7 @@ import { businessDay, horizon, pastPeriod } from "../tools/periods";
 import type { ToolName, Tools } from "../tools/tools";
 import type { EvalItem, ToolParams } from "../tools/types";
 import type { Writer } from "../writer/writer";
-import { Interpreter, locationLabel, type ActionPlan, type CatalogPlan, type ClarifyPlan, type Plan, type QueryPlan } from "./interpret";
+import { Interpreter, locationLabel, type ActionPlan, type CatalogPlan, type ClarifyPlan, type DocumentPlan, type Plan, type QueryPlan } from "./interpret";
 import { validateDraft } from "../drafts/schemas";
 import type { DraftBuilder } from "../drafts/builder";
 import type { DraftStore } from "../drafts/store";
@@ -29,6 +29,7 @@ import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
 import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
 import { tokenize } from "../entities/normalize";
+import { tableFor } from "../writer/table";
 
 /** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
 export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
@@ -75,7 +76,11 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_reorder: "/informes",
   query_orders: "/pedidos",
   query_spend: "/recepciones",
+  query_product: "/productos",
 };
+
+/** Consultas cuya gráfica repite la tabla. */
+const CHART_REPEATS_TABLE = new Set<ToolName>(["query_stock", "query_spend"]);
 
 const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
 
@@ -293,7 +298,7 @@ export class Agent {
    * Borrador: el código lo construye y valida; Jev comprueba su coherencia (y, en el catálogo, revisa
    * duplicados, sentido y plausibilidad en la misma llamada); el usuario lo confirma.
    */
-  private async draft(plan: ActionPlan | CatalogPlan, env: ExecEnv): Promise<ReportOutcome> {
+  private async draft(plan: ActionPlan | CatalogPlan | DocumentPlan, env: ExecEnv): Promise<ReportOutcome> {
     const { deps } = this;
     const built = await env.timer.time("herramientas", () =>
       deps.builder.build({ plan, message: env.message, ctx: env.ctx, source: env.tools.source, overrides: env.overrides, now: this.now() } as Parameters<DraftBuilder["build"]>[0]),
@@ -402,6 +407,7 @@ export class Agent {
       }
       case "accion":
       case "catalogo":
+      case "documento":
         return this.draft(plan, env);
       case "borrador":
         return this.answerDraft(plan, env);
@@ -432,7 +438,7 @@ export class Agent {
     const notices: string[] = [];
     if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
     if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
-      notices.push("No has indicado local: te lo muestro de todos, desglosado por local.");
+      notices.push(plan.tool === "query_stock" ? "No has indicado local: te lo muestro de todos, desglosado por local." : "No has indicado local: miro todos los tuyos.");
     }
 
     const evaluations = await timer.time("jev2", () => this.evaluate(result.evalItems, message, h.label));
@@ -447,7 +453,13 @@ export class Agent {
 
     // Gráfica calculada por el código (decimal.js) para acompañar la respuesta.
     const days = period ? daysInclusive(period.from, period.to) : 30;
-    const chart = await timer
+    // Varias filas: tabla en el chat (el texto queda de titular).
+    const table = tableFor(result, (evaluations?.length ?? 0) > 0);
+    if (table) await emit({ event: "table", data: table });
+
+    // La gráfica solo si añade algo a la tabla: el stock y el gasto por proveedor serían las mismas
+    // cifras en barras (y así se ahorra la consulta de la gráfica).
+    const chart = table && CHART_REPEATS_TABLE.has(plan.tool) ? null : await timer
       .time("herramientas", () =>
         new Analytics(tools.source).chartForTool(
           plan.tool,
@@ -474,7 +486,7 @@ export class Agent {
       },
     });
 
-    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices };
+    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}) };
   }
 
   /** Llamada nº 2: Jev juzga las cifras calculadas. Devuelve null si Jev falla (se degrada sin valoración). */

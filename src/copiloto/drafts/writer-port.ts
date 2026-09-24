@@ -3,6 +3,7 @@
 // documentos en estado borrador/abierto (lo que el RLS permite) y no mueven stock.
 // El catálogo (precios, altas, mínimos, archivar) se escribe con el cliente del usuario: RLS exige
 // rol de encargado; si una escritura no afecta a ninguna fila se trata como falta de permiso.
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const RPC_ERROR_CODES = [
@@ -82,6 +83,18 @@ export interface InventoryWriter {
     locationIds: string[];
   }): Promise<{ productId: string }>;
   setLocationLevel(args: { locationId: string; productId: string; field: "min_qty" | "par_qty"; value: string }): Promise<void>;
+  openCount(args: { orgId: string; locationId: string }): Promise<{ countId: string }>;
+  addCountLines(args: {
+    countId: string;
+    areaId: string | null;
+    lines: Array<{ productId: string; qtyBase: string; input: { amount: string; unit: string; packId?: string } }>;
+    clientRef: string;
+  }): Promise<void>;
+  receiveTransfer(transferId: string): Promise<void>;
+  cancelTransfer(transferId: string): Promise<void>;
+  sendOrder(orderId: string): Promise<void>;
+  receiveOrder(orderId: string, lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>): Promise<{ receiptId: string | null }>;
+  cancelOrder(orderId: string): Promise<void>;
   archiveProduct(productId: string): Promise<void>;
   /** Pedido a proveedor en borrador (no se envía: eso es de un encargado desde /pedidos). */
   createOrder(args: {
@@ -90,6 +103,12 @@ export interface InventoryWriter {
     supplierId: string;
     lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
   }): Promise<{ orderId: string }>;
+}
+
+/** UUID determinista por línea a partir de la clave del clic (misma confirmación → mismas claves). */
+function lineRef(key: string, index: number): string {
+  const hex = createHash("sha256").update(`${key}:${index}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 function raise(what: string, error: { message?: string; code?: string }): never {
@@ -131,6 +150,56 @@ export class SupabaseInventoryWriter implements InventoryWriter {
       raise("transfer_lines", lines.error);
     }
     return { transferId };
+  }
+
+  async openCount(args: { orgId: string; locationId: string }): Promise<{ countId: string }> {
+    const { data, error } = await this.db.from("inventory_counts").insert({ org_id: args.orgId, location_id: args.locationId }).select("id").single();
+    if (error) raise("open_count", error.code === "23505" ? { ...error, message: "invalid_status" } : error);
+    return { countId: String((data as { id: string }).id) };
+  }
+
+  async addCountLines(args: Parameters<InventoryWriter["addCountLines"]>[0]): Promise<void> {
+    // client_ref por línea (derivado de la clave del clic): repetir la confirmación no duplica líneas.
+    const rows = args.lines.map((l, i) => ({
+      count_id: args.countId,
+      product_id: l.productId,
+      area_id: args.areaId,
+      qty: l.qtyBase,
+      input: l.input,
+      client_ref: lineRef(args.clientRef, i),
+    }));
+    const { error } = await this.db.from("count_lines").upsert(rows, { onConflict: "client_ref", ignoreDuplicates: true });
+    if (error) raise("count_lines", error);
+  }
+
+  async receiveTransfer(transferId: string): Promise<void> {
+    // Sin líneas: se recibe lo enviado (receive_transfer usa qty_sent por defecto).
+    const { error } = await this.db.rpc("receive_transfer", { p_transfer: transferId, p_lines: [] });
+    if (error) raise("receive_transfer", error);
+  }
+
+  async cancelTransfer(transferId: string): Promise<void> {
+    const { error } = await this.db.rpc("cancel_transfer", { p_transfer: transferId });
+    if (error) raise("cancel_transfer", error);
+  }
+
+  async sendOrder(orderId: string): Promise<void> {
+    const { error } = await this.db.rpc("send_order", { p_order: orderId });
+    if (error) raise("send_order", error);
+  }
+
+  async receiveOrder(orderId: string, lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>): Promise<{ receiptId: string | null }> {
+    const { data, error } = await this.db.rpc("receive_order", {
+      p_order: orderId,
+      p_lines: lines.map((l) => ({ pack_id: l.packId, packs_qty: l.packsQty, ...(l.packPrice ? { pack_price: l.packPrice } : {}) })),
+    });
+    if (error) raise("receive_order", error);
+    return { receiptId: data ? String(data) : null };
+  }
+
+  async cancelOrder(orderId: string): Promise<void> {
+    const { error } = await this.db.rpc("cancel_order", { p_order: orderId });
+    if (error) raise("cancel_order", error);
   }
 
   async sendTransfer(transferId: string): Promise<void> {

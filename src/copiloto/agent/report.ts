@@ -22,7 +22,7 @@ export interface Evaluation {
 }
 
 export type ReportOutcome =
-  | { kind: "consulta"; tool: ToolName; scope: Scope; result: ToolResult; evaluations: Evaluation[]; notices: string[] }
+  | { kind: "consulta"; tool: ToolName; scope: Scope; result: ToolResult; evaluations: Evaluation[]; notices: string[]; tabulated?: boolean }
   | { kind: "navegacion"; navigate: NavigateEvent; destino: string }
   | { kind: "aclaracion"; clarify: ClarifyEvent }
   /** charla: saludo, despedida o agradecimiento (respuesta corta en vez de la ayuda). */

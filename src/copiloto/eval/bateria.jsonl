@@ -41,6 +41,10 @@
 {"kind":"producto","message":"stock de servilletas","expect":["Servilletas cóctel negras 20x20 (paq. 100)"]}
 {"kind":"producto","message":"¿cuántas bengalas quedan?","expect":["Bengalas para botella (caja 60)"]}
 {"kind":"producto","message":"stock de jagermeister","expect":[]}
+// Ruido que confundía la búsqueda: «para» en «Destilados para gamas», «gas» en «gastado».
+{"kind":"producto","message":"pasa 6 cocas de Parador a Pickels","expect":["Coca-Cola","Coca-Cola Zero"],"not":["Beefeater","Absolut Blue"]}
+{"kind":"producto","message":"¿cuánto he gastado este mes?","expect":[]}
+{"kind":"producto","message":"prepara el pedido de la semana para Parador","expect":[]}
 // Nombres con número: la cifra corta el texto del producto, pero la búsqueda lo encuentra igual.
 {"kind":"producto","message":"pasa 2 monkey 47 al vivero","expect":["Monkey 47 (50 cl)"]}
 {"kind":"producto","message":"se han roto 3 larios 12","expect":["Larios 12"],"not":["Beefeater"]}
@@ -54,6 +58,8 @@
 {"kind":"cantidad","message":"pasa 1,5 kg de limas al parador","expect":[{"amount":"1.5","unit":"kg","product":"limas"}]}
 {"kind":"cantidad","message":"dos botellas de moet rotas","expect":[{"amount":"2","unit":"botella","product":"moet"}]}
 {"kind":"cantidad","message":"pasa monkey 47 al vivero","expect":[]}
+{"kind":"cantidad","message":"pasa 3 botellas rotas de barceló al vivero","expect":[{"amount":"3","unit":"botella","product":"barceló"}]}
+{"kind":"cantidad","message":"tira 2 cajas caducadas del zumo de piña","expect":[{"amount":"2","unit":"caja","product":"zumo de piña"}]}
 {"kind":"cantidad","message":"media caja de red bull","expect":[{"amount":"0.5","unit":"caja","product":"red bull"}]}
 {"kind":"cantidad","message":"una docena de limones","expect":[{"amount":"12","unit":"ud","product":"limones"}]}
 // Respuestas escritas a una pregunta del asistente.

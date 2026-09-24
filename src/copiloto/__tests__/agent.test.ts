@@ -36,8 +36,13 @@ describe("enrutado del agente", () => {
     expect(Object.keys(state as object).sort()).toEqual(["current_location", "current_page", "message", "recent_turns", "segments"]);
     expect((state as { segments: unknown[] }).segments).toEqual([{ text: "2 botellas de ron", amount: "2", unit: "botella" }]);
     expect(Object.keys(questions)).toEqual(
-      expect.arrayContaining(["intent", "intent_alt", "destino", "local", "local_destino", "espacio", "herramienta", "tipo_accion", "periodo", "ambiguo", "inyeccion", "producto_0", "cantidad_ok_0"]),
+      expect.arrayContaining(["intent", "intent_alt", "local", "local_destino", "espacio", "herramienta", "tipo_accion", "motivo_merma", "ambiguo", "inyeccion", "producto_0", "cantidad_ok_0"]),
     );
+    // Solo lo que el mensaje puede contestar: sin fechas no hay periodo; sin «llévame/abre…» no hay
+    // pantalla; sin conversación previa no hay seguimiento.
+    expect(Object.keys(questions)).not.toEqual(expect.arrayContaining(["periodo"]));
+    expect(Object.keys(questions)).not.toContain("destino");
+    expect(Object.keys(questions)).not.toContain("seguimiento");
     expect(JSON.stringify(questions.cantidad_ok_0)).toContain("`segments.0.amount`");
   });
 
@@ -125,9 +130,10 @@ describe("enrutado del agente", () => {
     const shortcut = await run(agent, chat("/pendientes"));
     expect(find(shortcut, "done")!.text).toContain("Hay 1 traspaso sin recibir");
     // Sin valoración de Jev, la reposición se muestra igualmente con las cifras calculadas.
-    const reorder = find(await run(agent, chat("/reponer")), "done")!.text;
+    const reorderEvents = await run(agent, chat("/reponer"));
+    const reorder = find(reorderEvents, "done")!.text;
     expect(reorder).toContain("conviene reponer 5 productos");
-    expect(reorder).toContain("Coca-Cola 20 cl (Vivero): quedan 2 cajas, pedir");
+    expect(find(reorderEvents, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ producto: "Coca-Cola 20 cl", local: "Vivero", stock: "2 cajas" })]));
     expect(reorder).toContain("No he podido valorar la urgencia");
   });
 });

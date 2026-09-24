@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, Loader2, Send, ShieldAlert, Sparkles, X } from "lucide-react";
 import { ChartCard } from "@/components/charts/charts";
-import { euros } from "@/lib/format";
-import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion } from "./types";
+import Decimal from "decimal.js";
+import { decimalText, euros, parseDecimal } from "@/lib/format";
+import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion, TableEvent } from "./types";
 import "./copiloto.css";
 
 type Item =
@@ -22,6 +23,7 @@ type Item =
       /** El borrador se confirmó o descartó después, desde el chat. */
       resolved?: ResolvedEvent;
       charts?: ChartSpec[];
+      table?: TableEvent;
       error?: string;
     };
 
@@ -72,6 +74,33 @@ function hrefFor(nav: NavigateEvent): string {
 
 function confidence(d: Decision): string {
   return `${Math.round((d.confidence ?? d.probability) * 100)} %`;
+}
+
+const EMPTY_VALUES = new Set(["no_indicado", "ninguno", "ninguna", "no_aplica"]);
+
+/** Lo que el asistente ha entendido, en una línea: «Traspaso · Parador → Vivero · Larios 12 · 3 botellas». */
+function understood(ev: DecisionEvent): Array<{ key: string; text: string; doubtful: boolean }> {
+  const all = [ev.intent, ...ev.decisions];
+  const by = (id: string) => all.find((d) => d.id === id);
+  // «Sin indicar», «Ninguno», «No aplica» no dicen nada: fuera.
+  const part = (d: Decision | undefined, text?: string) => (d && !EMPTY_VALUES.has(d.value) ? [{ key: d.id, text: text ?? d.valueLabel, doubtful: d.gate !== "actuar" }] : []);
+  const what = by("tipo_accion") ?? by("herramienta") ?? by("destino") ?? ev.intent;
+  const from = by("local");
+  const to = by("local_destino");
+  const places = from && to && !EMPTY_VALUES.has(from.value) && !EMPTY_VALUES.has(to.value) ? [{ key: "locales", text: `${from.valueLabel} → ${to.valueLabel}`, doubtful: from.gate !== "actuar" || to.gate !== "actuar" }] : [...part(from), ...part(to)];
+  const products = all.filter((d) => /^producto_\d+$/.test(d.id) || /^cantidad_ok_\d+$/.test(d.id));
+  return [...part(what), ...places, ...part(by("espacio")), ...products.flatMap((d) => part(d)), ...part(by("periodo"))];
+}
+
+/** Cantidad tal como se escribió: «2 × Botella 70 cl», «6 ud». */
+function inputText(input: { amount: string; unit: string; packId?: string }): string {
+  return input.packId ? `${decimalText(input.amount, 4)} × ${input.unit}` : `${decimalText(input.amount, 4)} ${input.unit}`;
+}
+
+/** Ediciones en el formato escrito (botellas, cajas…) → unidad base, con el mismo factor del borrador. */
+function toBaseEdit(text: string, base: string, amount: string): string {
+  const value = parseDecimal(text);
+  return value ? value.mul(new Decimal(base).div(amount)).toString() : text;
 }
 
 function newId(): string {
@@ -185,6 +214,7 @@ export function Copiloto() {
             const r = data as ResolvedEvent;
             setItems((prev) => prev.map((item) => (item.role === "assistant" && item.draft?.draftId === r.draftId ? { ...item, resolved: r } : item)));
           } else if (event === "chart") update(assistantId, (item) => ({ charts: [...(item.charts ?? []), data as ChartSpec] }));
+          else if (event === "table") update(assistantId, () => ({ table: data as TableEvent }));
           else if (event === "error") update(assistantId, () => ({ error: (data as ErrorEvent).message }));
           else if (event === "done") update(assistantId, () => ({ text: (data as DoneEvent).text, pending: false }));
         }
@@ -281,15 +311,7 @@ export function Copiloto() {
                   <div key={item.id} className="copiloto-msg user"><p>{item.text}</p></div>
                 ) : (
                   <div key={item.id} className="copiloto-msg assistant">
-                    {item.decision && (
-                      <div className="copiloto-chips">
-                        {[item.decision.intent, ...item.decision.decisions].map((d) => (
-                          <span key={d.id} className={`copiloto-chip ${d.gate}`} title={`${d.label}: ${d.valueLabel}`}>
-                            {d.label}: <b>{d.valueLabel}</b> {item.decision?.shortcut ? "" : confidence(d)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {item.decision && <Understood decision={item.decision} />}
                     {item.pending && !item.text && <p className="copiloto-muted"><Loader2 size={14} className="copiloto-spin" /> Pensando…</p>}
                     {item.text && <p className="copiloto-text">{item.text}</p>}
                     {item.error && <p className="copiloto-error"><AlertTriangle size={14} /> {item.error}</p>}
@@ -307,6 +329,7 @@ export function Copiloto() {
                         ))}
                       </div>
                     )}
+                    {item.table && <TableCard table={item.table} />}
                     {item.charts?.map((chart) => <ChartCard key={chart.id} spec={chart} compact />)}
                     {item.draft && <DraftCard draft={item.draft} resolved={item.resolved} />}
                     {item.navigate && !item.navigate.auto && (
@@ -440,8 +463,14 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
 
       {draft.kind === "minimo" && (
         <label className="copiloto-field">
-          {draft.field === "min_qty" ? "Mínimo" : "Objetivo"} en {draft.locationName} ({draft.baseUnit}) · antes: {draft.oldValue ?? "sin definir"}
-          <input defaultValue={draft.newValue} disabled={locked} inputMode="decimal" onChange={(event) => edit("newValue", event.target.value)} />
+          {draft.field === "min_qty" ? "Mínimo" : "Objetivo"} en {draft.locationName} ({draft.input?.unit ?? draft.baseUnit}) · antes:{" "}
+          {draft.oldValue === null ? "sin definir" : draft.input ? decimalText(new Decimal(draft.oldValue).div(new Decimal(draft.newValue).div(draft.input.amount)), 2) : draft.oldValue}
+          <input
+            defaultValue={draft.input ? decimalText(draft.input.amount, 4) : draft.newValue}
+            disabled={locked}
+            inputMode="decimal"
+            onChange={(event) => edit("newValue", draft.input ? toBaseEdit(event.target.value, draft.newValue, draft.input.amount) : event.target.value)}
+          />
         </label>
       )}
 
@@ -468,14 +497,40 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
         ))}
       {draft.kind === "pedido" && <p className="copiloto-detail">Se guardan como borrador en Pedidos (pon 0 para quitar una línea). Enviarlos al proveedor lo decides allí.</p>}
 
+      {draft.kind === "conteo" && draft.operation === "anotar" && (
+        <ul className="copiloto-lines">
+          {draft.lines.map((line) => (
+            <li key={line.productName}>{line.productName}: {line.text}</li>
+          ))}
+        </ul>
+      )}
+
+      {draft.kind === "documento" && (
+        <>
+          <p className="copiloto-detail">{draft.summary}</p>
+          {draft.lines.length > 0 && (
+            <ul className="copiloto-lines">
+              {draft.lines.map((line, i) => (
+                <li key={`${line.label}-${i}`}>{line.label}: {line.qty}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
       {draft.kind === "archivar" && (
         <p className="copiloto-detail">Dejará de aparecer en recepciones, traspasos, mermas e inventarios. Conserva su historial y puedes restaurarlo desde su ficha.</p>
       )}
 
       {draft.kind === "merma" && draft.editable.includes("qtyBase") && (
         <label className="copiloto-field">
-          Cantidad ({draft.baseUnit})
-          <input defaultValue={draft.qtyBase} disabled={locked} inputMode="decimal" onChange={(event) => edit("qtyBase", event.target.value)} />
+          Cantidad ({draft.input.unit})
+          <input
+            defaultValue={decimalText(draft.input.amount, 4)}
+            disabled={locked}
+            inputMode="decimal"
+            onChange={(event) => edit("qtyBase", toBaseEdit(event.target.value, draft.qtyBase, draft.input.amount))}
+          />
         </label>
       )}
 
@@ -483,7 +538,7 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
         <>
           <ul className="copiloto-lines">
             {draft.lines.map((line) => (
-              <li key={line.productName}>{line.productName}: {line.qtyBase} {line.baseUnit}</li>
+              <li key={line.productName}>{line.productName}: {inputText(line.input)}</li>
             ))}
           </ul>
           {draft.send && (
@@ -512,7 +567,9 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
         <>
           <ul className="copiloto-lines">
             {draft.preview.adjustments.map((a) => (
-              <li key={a.productName}>{a.productName}: {a.expected} → {a.counted} {a.baseUnit} ({a.diffValue} €)</li>
+              <li key={a.productName}>
+                {a.productName}: {a.expectedText ?? `${a.expected} ${a.baseUnit}`} → {a.countedText ?? `${a.counted} ${a.baseUnit}`} ({euros(a.diffValue)})
+              </li>
             ))}
           </ul>
           <label className="copiloto-check">
@@ -575,5 +632,66 @@ function Checks({ checks }: { checks: DraftCheck[] }) {
         );
       })}
     </ul>
+  );
+}
+
+function Understood({ decision }: { decision: DecisionEvent }) {
+  const [open, setOpen] = useState(false);
+  const parts = understood(decision);
+  const quiet = decision.intent.value === "conversar" || decision.intent.value === "fuera_de_ambito";
+  if (quiet || parts.length === 0) return null;
+  return (
+    <div className="copiloto-understood">
+      <p>
+        <span className="copiloto-understood-label">Entendido:</span>{" "}
+        {parts.map((p, i) => (
+          <span key={p.key}>
+            {i > 0 && " · "}
+            <span className={p.doubtful ? "dudoso" : undefined} title={p.doubtful ? "No estoy seguro: revísalo" : undefined}>{p.text}</span>
+          </span>
+        ))}
+        {!decision.shortcut && (
+          <button type="button" className="copiloto-why" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {open ? "Ocultar" : "¿Por qué?"}
+          </button>
+        )}
+      </p>
+      {open && (
+        <div className="copiloto-chips">
+          {[decision.intent, ...decision.decisions].map((d) => (
+            <span key={d.id} className={`copiloto-chip ${d.gate}`} title={`${d.label}: ${d.valueLabel}`}>
+              {d.label}: <b>{d.valueLabel}</b> {confidence(d)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TableCard({ table }: { table: TableEvent }) {
+  const flagged = new Set(table.flagged ?? []);
+  return (
+    <div className="copiloto-table">
+      <table>
+        <thead>
+          <tr>
+            {table.columns.map((c) => (
+              <th key={c.key} className={c.align === "right" ? "num" : undefined}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, i) => (
+            <tr key={i} className={flagged.has(i) ? "flagged" : undefined}>
+              {table.columns.map((c) => (
+                <td key={c.key} className={c.align === "right" ? "num" : undefined}>{row[c.key]}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {table.more ? <p className="copiloto-table-more">…y {table.more} más en la pantalla enlazada.</p> : null}
+    </div>
   );
 }

@@ -140,13 +140,13 @@ export class FixtureDataSource implements InventoryDataSource {
       {
         id: id("abababab", 1), locationId: PARADOR.id, supplierName: "Distribuciones Canarias", status: "sent",
         createdAt: hoursAgo(this.now, 24 * 5), sentAt: hoursAgo(this.now, 24 * 5), expectedDate: day(48),
-        lines: [{ productId: P[1]!.id, packsQty: "2", packPrice: "92.40", receivedPacks: "0" }],
+        lines: [{ productId: P[1]!.id, packsQty: "2", packPrice: "92.40", receivedPacks: "0", packId: P[1]!.packs[1]!.id, packName: P[1]!.packs[1]!.name }],
       },
       // Borrador sin enviar en Vivero.
       {
         id: id("abababab", 2), locationId: VIVERO.id, supplierName: "Bebidas del Sur", status: "draft",
         createdAt: hoursAgo(this.now, 20), sentAt: null, expectedDate: null,
-        lines: [{ productId: P[4]!.id, packsQty: "5", packPrice: "13.20", receivedPacks: "0" }],
+        lines: [{ productId: P[4]!.id, packsQty: "5", packPrice: "13.20", receivedPacks: "0", packId: P[4]!.packs[0]!.id, packName: P[4]!.packs[0]!.name }],
       },
     ];
     return all.filter((o) => filter.locationIds.includes(o.locationId) && filter.statuses.includes(o.status));

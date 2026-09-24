@@ -137,7 +137,49 @@ export class InventoryTools implements Tools {
         return this.orders(params, ctx);
       case "query_spend":
         return this.spend(params, ctx);
+      case "query_product":
+        return this.product(params, ctx);
     }
+  }
+
+  /**
+   * Ficha de producto: categoría, formatos, proveedor y último precio de compra, y stock y mínimo en
+   * cada local. Una fila por local; la ficha va en los totales (texto ya formateado).
+   */
+  private async product(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
+    const product = ctx.products.find((p) => p.id === params.productIds[0]);
+    if (!product) return finish("query_product", [], {});
+    const [balances, levels, prices] = await Promise.all([
+      this.source.balances({ locationIds: params.locationIds, productIds: [product.id] }),
+      this.source.locationProducts({ locationIds: params.locationIds, productIds: [product.id] }),
+      this.source.supplierPrices(product.packs.map((k) => k.id)),
+    ]);
+    const qty = new Map(balances.map((b) => [b.locationId, new Decimal(b.qty)]));
+    const min = new Map(levels.map((l) => [l.locationId, new Decimal(l.minQty)]));
+    const locations = params.locationIds.filter((id) => qty.has(id) || min.has(id));
+    const rows: ToolRow[] = locations.map((id) => {
+      const q = qty.get(id) ?? new Decimal(0);
+      const m = min.get(id);
+      return {
+        local: locationName(ctx, id),
+        cantidad: formatStock(q, product),
+        minimo: m && m.gt(0) ? formatStock(m, product) : null,
+        bajo_minimo: !!m && m.gt(0) && q.lt(m),
+      };
+    });
+    const total = [...qty.values()].reduce((a, b) => a.plus(b), new Decimal(0));
+    const packNames = new Map(product.packs.map((k) => [k.id, k.name]));
+    const buy = prices
+      .map((p) => `${packNames.get(p.packId) ?? "formato"} a ${formatMoney(p.lastPrice)} (${p.supplierName})`)
+      .join(" · ");
+    return finish("query_product", rows, {
+      producto: product.name,
+      categoria: product.category ?? "sin categoría",
+      formatos: product.packs.map((k) => k.name).join(" · ") || "sin formatos",
+      compra: buy || "sin precio de compra",
+      total: formatStock(total, product),
+      locales: String(locations.length),
+    });
   }
 
   /** Pedidos abiertos: borradores sin enviar, pendientes de recibir y retrasados. */

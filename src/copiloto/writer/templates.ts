@@ -44,9 +44,10 @@ export function renderTemplate(report: DecisionReport): string {
     case "borrador": {
       const review = o.draft.checks?.filter((c) => c.status === "revisar") ?? [];
       if (review.length > 0) {
-        return `He preparado un borrador: ${o.draft.title}. Antes de confirmarlo revisa ${review.length === 1 ? "este aviso" : "estos avisos"}: ${review.map((c) => c.detail).join(" ")}`;
+        return `He preparado un borrador. Antes de confirmarlo revisa ${review.length === 1 ? "este aviso" : "estos avisos"}: ${review.map((c) => c.detail).join(" ")}`;
       }
-      return `He preparado un borrador: ${o.draft.title}. Revísalo y confírmalo si es correcto.`;
+      // El título ya va en la tarjeta del borrador: el texto no lo repite.
+      return "He preparado un borrador: revísalo y confírmalo si es correcto.";
     }
     case "error":
       return o.message;
@@ -59,7 +60,9 @@ export function renderTemplate(report: DecisionReport): string {
 
 /** Los avisos («Sigo con…», «No has indicado local…») van delante: explican lo que viene después. */
 function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>): string {
-  const body = renderQueryBody(o);
+  // Con tabla, el texto es solo el titular: la lista va en la tabla.
+  const full = renderQueryBody(o);
+  const body = o.tabulated ? full.split("\n").filter((line) => !line.startsWith("• ") && !line.startsWith("…y ")).join("\n") : full;
   return o.notices.length > 0 ? `${o.notices.join(" ")}\n${body}` : body;
 }
 
@@ -76,6 +79,9 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       query_reorder: `No falta nada ${where} para ${result.totals.horizonte ?? "los próximos días"}.`,
       query_orders: `No hay pedidos abiertos ${where}.`,
       query_spend: `No hay compras registradas ${where}.`,
+      query_product: result.totals.producto
+        ? `${result.totals.producto} (${result.totals.categoria}). Formatos: ${result.totals.formatos}. Compra: ${result.totals.compra}. No está activo en ningún local.`
+        : "No encuentro ese producto en el catálogo.",
     };
     return `${empty[result.tool].replace(/\s+\./, ".")}`;
   }
@@ -94,7 +100,7 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const head =
         result.count === 1
           ? `Stock ${where}: ${result.rows[0]!.cantidad} (${result.rows[0]!.valor}).`
-          : `Stock ${where}: valor total ${result.totals.valor_total}. Bajo mínimo: ${result.totals.bajo_minimo}.`;
+          : `Stock ${where}: valor total ${result.totals.valor_total}.${result.totals.bajo_minimo !== "0" ? ` ${plural(result.totals.bajo_minimo ?? "0", "producto bajo mínimo", "productos bajo mínimo")}.` : ""}`;
       if (result.count === 1) return `${head}${result.rows[0]!.bajo_minimo ? ` Está por debajo del mínimo (${result.rows[0]!.minimo}).` : ""}`;
       return `${head}\n${list(result.rows, (r) => `${r.producto} (${r.local}${r.espacio ? ` · ${r.espacio}` : ""}): ${r.cantidad}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`)}${more}`;
     }
@@ -123,6 +129,11 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const t = result.totals;
       const head = `${plural(t.pendientes ?? "0", "pedido pendiente", "pedidos pendientes")} de recibir (${t.valor_pendiente})${t.retrasados !== "0" ? `, ${t.retrasados} con retraso` : ""}${t.borradores !== "0" ? ` y ${plural(t.borradores ?? "0", "borrador sin enviar", "borradores sin enviar")}` : ""}.`;
       return `${head}\n${list(result.rows, (r) => `${r.proveedor} → ${r.local}: ${r.estado}${r.retraso ? " ⚠ con retraso" : ""}, entrega ${r.entrega}, ${r.importe}`)}${more}`;
+    }
+    case "query_product": {
+      const t = result.totals;
+      const places = list(result.rows, (r) => `${r.local}: ${r.cantidad}${r.minimo ? ` (mínimo ${r.minimo})` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
+      return `${t.producto} (${t.categoria}). Formatos: ${t.formatos}. Compra: ${t.compra}. Stock total: ${t.total}.\n${places}`;
     }
     case "query_spend":
       return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}`;

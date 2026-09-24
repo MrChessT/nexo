@@ -204,7 +204,7 @@ export class SupabaseDataSource implements InventoryDataSource {
     if (filter.locationIds.length === 0) return [];
     const { data, error } = await this.db
       .from("purchase_orders")
-      .select("id,location_id,status,created_at,sent_at,expected_date,supplier:suppliers(name),lines:purchase_order_lines(packs_qty:packs_qty::text,pack_price:pack_price::text,received_packs:received_packs::text,pack:product_packs(product_id))")
+      .select("id,location_id,status,created_at,sent_at,expected_date,supplier:suppliers(name),lines:purchase_order_lines(packs_qty:packs_qty::text,pack_price:pack_price::text,received_packs:received_packs::text,pack:product_packs(id,name,product_id))")
       .in("location_id", filter.locationIds)
       .in("status", filter.statuses)
       .order("created_at", { ascending: false })
@@ -220,6 +220,8 @@ export class SupabaseDataSource implements InventoryDataSource {
       expectedDate: strOrNull(r.expected_date),
       lines: ((r.lines as Row[] | null) ?? []).map((l) => ({
         productId: String((l.pack as { product_id?: string } | null)?.product_id ?? ""),
+        packId: String((l.pack as { id?: string } | null)?.id ?? ""),
+        packName: String((l.pack as { name?: string } | null)?.name ?? ""),
         packsQty: str(l.packs_qty),
         packPrice: strOrNull(l.pack_price),
         receivedPacks: str(l.received_packs),

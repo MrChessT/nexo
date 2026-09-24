@@ -18,7 +18,7 @@ import { SessionStore } from "../agent/session";
 import { MemoryAuditSink } from "../audit/audit";
 import { LruCache } from "../cache/lru";
 import { loadConfig } from "../config";
-import type { ClarifyEvent, SseEvent } from "../contract/index";
+import type { ClarifyEvent, DecisionEvent, SseEvent, TableEvent } from "../contract/index";
 import { FakeJev, type Script } from "../dev/fake-jev";
 import { FixtureDataSource, fixtureContext, ORG_ID } from "../dev/fixture";
 import { FixtureWriter } from "../dev/fixture-writer";
@@ -225,7 +225,22 @@ export async function runConversations(real = false): Promise<{ report: string; 
       const problems = check(turn.espera, events);
       if (problems.length) failed += 1;
       lines.push(`**Usuario:** ${turn.boton !== undefined ? `[botón] ${said}` : said}  `);
+      // Lo que ve el usuario: «Entendido: …» (lo dudoso entre ¿?), el texto y la tabla si la hay.
+      const decision = events.find((e) => e.event === "decision")?.data as DecisionEvent | undefined;
+      if (decision && !decision.shortcut) {
+        const parts = [decision.intent, ...decision.decisions]
+          .filter((d) => !["intent", "seguimiento", "coherencia"].includes(d.id) || (d.id === "intent" && decision.decisions.length === 0))
+          .filter((d) => !["no_indicado", "ninguno", "ninguna", "no_aplica"].includes(d.value));
+        lines.push(`&nbsp;&nbsp;*Entendido: ${parts.map((d) => (d.gate === "actuar" ? d.valueLabel : `¿${d.valueLabel}?`)).join(" · ")}*  `);
+      }
       lines.push(`**Asistente:** ${done?.text.replace(/\n+/g, " ") ?? "(sin respuesta)"}  `);
+      const table = events.find((e) => e.event === "table")?.data as TableEvent | undefined;
+      if (table) {
+        lines.push(``, `| ${table.columns.map((c) => c.label).join(" | ")} |`, `| ${table.columns.map(() => "---").join(" | ")} |`);
+        for (const row of table.rows.slice(0, 4)) lines.push(`| ${table.columns.map((c) => row[c.key] ?? "").join(" | ")} |`);
+        if (table.rows.length > 4 || table.more) lines.push(`| … ${table.rows.length - 4 + (table.more ?? 0)} filas más |`);
+        lines.push(``);
+      }
       if (open?.options.length) lines.push(`&nbsp;&nbsp;Opciones: ${open.options.map((o) => `[${o.label}]`).join(" ")}  `);
       if (draft) lines.push(`&nbsp;&nbsp;Borrador: *${draft.title}*${draft.warnings.length ? ` — avisos: ${draft.warnings.join(" / ")}` : ""}  `);
       lines.push(problems.length ? `❌ ${problems.join("; ")}` : `✅`, ``);

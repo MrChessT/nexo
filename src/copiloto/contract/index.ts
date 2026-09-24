@@ -81,6 +81,7 @@ export interface NavigateEvent {
 }
 
 export type ClarifyField =
+  | "documento"
   | "intent"
   | "local"
   | "espacio"
@@ -126,6 +127,16 @@ export interface ErrorEvent {
   retryable: boolean;
 }
 
+/** Resultado de una consulta con varias filas: el chat lo pinta como tabla (el texto queda de titular). */
+export interface TableEvent {
+  columns: Array<{ key: string; label: string; align?: "left" | "right" }>;
+  rows: Array<Record<string, string>>;
+  /** Filas que marcar (bajo mínimo, con retraso…), por índice. */
+  flagged?: number[];
+  /** Filas que no caben y se ven en la pantalla enlazada. */
+  more?: number;
+}
+
 export interface DoneEvent {
   messageId: string;
   text: string;
@@ -159,7 +170,7 @@ export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 export interface DraftBase {
   draftId: string;
-  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | CatalogKind;
+  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | "documento" | "conteo" | CatalogKind;
   title: string;
   requiredRole: Role;
   canConfirm: boolean;
@@ -234,6 +245,10 @@ export interface CountCloseDraft extends DraftBase {
       diff: string;
       baseUnit: BaseUnit;
       diffValue: string;
+      /** Como se cuenta en barra («12 botellas», «2 cajas + 5 ud»), para mostrar. */
+      expectedText?: string;
+      countedText?: string;
+      diffText?: string;
     }>;
     totalDiffValue: string;
   };
@@ -322,7 +337,35 @@ export interface OrderDraft extends DraftBase {
   }>;
 }
 
-export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft;
+/** Inventario: abrirlo en un local o apuntar lo contado en el que está abierto. */
+export interface CountDraft extends DraftBase {
+  kind: "conteo";
+  operation: "abrir" | "anotar";
+  locationId: string;
+  locationName: string;
+  /** Inventario abierto donde se apunta (null al abrir uno). */
+  countId: string | null;
+  areaId: string | null;
+  areaName: string | null;
+  lines: Array<{ productId: string; productName: string; qtyBase: string; baseUnit: BaseUnit; input: QuantityInput; text: string }>;
+}
+
+/** Recibir, enviar o cancelar un traspaso o un pedido que ya existe. */
+export interface DocumentDraft extends DraftBase {
+  kind: "documento";
+  operation: "recibir_traspaso" | "cancelar_traspaso" | "enviar_pedido" | "recibir_pedido" | "cancelar_pedido";
+  documentId: string;
+  /** Local para enlazar la pantalla al terminar. */
+  locationId: string;
+  /** «Parador → Vivero · enviado hace 3 días», «Makro · Parador · entrega 21/09». */
+  summary: string;
+  /** Líneas para mostrar («Coca-Cola 20 cl: 2 cajas»). */
+  lines: Array<{ label: string; qty: string }>;
+  /** Recibir un pedido: lo pendiente de cada formato, al último precio. */
+  receive?: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
+}
+
+export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft | DocumentDraft | CountDraft;
 
 // Gráficas y análisis -----------------------------------------------------------
 
@@ -389,6 +432,7 @@ export type SseEvent =
   | { event: "navigate"; data: NavigateEvent }
   | { event: "draft"; data: Draft }
   | { event: "chart"; data: ChartSpec }
+  | { event: "table"; data: TableEvent }
   | { event: "clarify"; data: ClarifyEvent }
   | { event: "resolved"; data: ResolvedEvent }
   | { event: "error"; data: ErrorEvent }
