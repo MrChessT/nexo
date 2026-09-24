@@ -10,7 +10,7 @@
 
 drop function if exists close_count(uuid, boolean);
 
-create function close_count(p_count uuid, p_zero_uncounted boolean default false, p_as_consumption boolean default false)
+create or replace function close_count(p_count uuid, p_zero_uncounted boolean default false, p_as_consumption boolean default false)
 returns void
 language plpgsql security definer set search_path = public as $$
 declare
