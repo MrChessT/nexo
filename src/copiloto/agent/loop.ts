@@ -24,13 +24,18 @@ import type { DecisionReport, Evaluation, ReportOutcome } from "./report";
 import { buildRouting, type RoutingMeta } from "./routing";
 import { activeFocus, type Focus, type PendingClarify, type Session, type SessionStore } from "./session";
 import type { Draft } from "../contract/index";
+import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
+
+/** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
+export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
 
 export interface RequestScope {
   tools?: Tools;
   audit?: AuditSink;
   sessions?: SessionStore;
   drafts?: DraftStore;
+  confirmDraft?: ConfirmDraft;
 }
 
 export interface AgentDeps {
@@ -46,6 +51,8 @@ export interface AgentDeps {
   selfConsistency: boolean;
   drafts: DraftStore;
   builder: DraftBuilder;
+  /** Confirmación por chat en desarrollo y tests (en producción llega por petición). */
+  confirmDraft?: ConfirmDraft;
   now?: () => Date;
 }
 
@@ -95,6 +102,7 @@ export class Agent {
       audit: scope.audit ?? this.deps.audit,
       sessions: scope.sessions ?? this.deps.sessions,
       drafts: scope.drafts ?? this.deps.drafts,
+      confirmDraft: scope.confirmDraft ?? this.deps.confirmDraft,
     };
     const timer = new StageTimer();
     const messageId = randomUUID();
@@ -145,7 +153,7 @@ export class Agent {
       } else {
         if (!routing) {
           const built = await timer.time("entidades", () =>
-            buildRouting(message, page, pageContext?.locationId, session.turns, ctx, deps.retriever, deps.selfConsistency),
+            buildRouting(message, page, pageContext?.locationId, session.turns, ctx, deps.retriever, deps.selfConsistency, activeFocus(session, this.now().getTime())?.draftTitle),
           );
           const jev = await timer.time("jev1", () => deps.jev.evaluate(built.state as unknown as EntryType, built.questions));
           routing = { meta: built.meta, jev };
@@ -165,7 +173,7 @@ export class Agent {
         data: { messageId, intent: intentDecision, decisions: decisions.filter((d) => d.id !== "intent"), shortcut },
       });
 
-      const outcome = await this.execute(plan, { message, messageId, page, pageContext, overrides, routing, ctx, session, emit, timer, tools: toolset, decisions, audit: deps.audit, drafts: deps.drafts });
+      const outcome = await this.execute(plan, { message, messageId, page, pageContext, overrides, routing, ctx, session, emit, timer, tools: toolset, decisions, audit: deps.audit, drafts: deps.drafts, confirmDraft: deps.confirmDraft });
 
       const report: DecisionReport = {
         version: 1,
@@ -293,6 +301,39 @@ export class Agent {
     return { kind: "borrador", draft };
   }
 
+  /**
+   * «Sí, adelante» / «cancélalo» sobre el borrador pendiente. Confirmar pasa por el mismo servicio
+   * que el botón (dueño, caducidad, rol, idempotencia). Con avisos en «revisar» no se confirma por
+   * chat: hay que marcarlos en la tarjeta.
+   */
+  private async answerDraft(plan: Extract<Plan, { type: "borrador" }>, env: ExecEnv): Promise<ReportOutcome> {
+    const stored = await env.drafts.get(plan.draftId, env.ctx.userId, env.ctx.orgId);
+    if (!stored || stored.status !== "pendiente" || new Date(stored.draft.expiresAt).getTime() < this.now().getTime()) {
+      return { kind: "error", message: "Ese borrador ya no está disponible (se confirmó, se descartó o caducó). Pídemelo de nuevo." };
+    }
+    const title = stored.draft.title;
+    const resolved = async (status: "confirmado" | "descartado", message: string): Promise<ReportOutcome> => {
+      await env.emit({ event: "resolved", data: { draftId: plan.draftId, status, message } });
+      return { kind: "resuelto", status, message };
+    };
+
+    if (plan.action === "cancelar") {
+      // Se bloquea en el servidor para que la tarjeta antigua ya no pueda confirmarlo.
+      await env.drafts.claim(plan.draftId);
+      env.drafts.delete(plan.draftId);
+      return resolved("descartado", `Descartado: ${title}.`);
+    }
+
+    if (stored.draft.checks?.some((c) => c.status === "revisar")) {
+      return { kind: "error", message: "Ese borrador tiene avisos que revisar: márcalos en la tarjeta y confírmalo desde allí." };
+    }
+    if (!env.confirmDraft) return { kind: "error", message: "Confírmalo con el botón de la tarjeta." };
+    const result = await env.confirmDraft(plan.draftId);
+    if (!result.ok) return { kind: "error", message: result.message };
+    if (result.navigate) await env.emit({ event: "navigate", data: result.navigate });
+    return resolved("confirmado", result.message);
+  }
+
   private async execute(plan: Plan, env: ExecEnv): Promise<ReportOutcome> {
     const { ctx, emit } = env;
     switch (plan.type) {
@@ -312,6 +353,8 @@ export class Agent {
       case "accion":
       case "catalogo":
         return this.draft(plan, env);
+      case "borrador":
+        return this.answerDraft(plan, env);
       case "consultar":
         return this.query(plan, env.message, ctx, emit, env.timer, env.tools);
     }
@@ -425,6 +468,7 @@ interface ExecEnv {
   decisions: Decision[];
   audit: AuditSink;
   drafts: DraftStore;
+  confirmDraft?: ConfirmDraft;
 }
 
 function overrideKey(pending: PendingClarify, option: string): string {
@@ -462,6 +506,14 @@ function nextFocus(plan: Plan, outcome: ReportOutcome, previous: Focus | undefin
       periodo: plan.periodo,
       at: now,
     };
+  }
+  if (outcome.kind === "resuelto") {
+    // El borrador ya no está pendiente; el tema sigue siendo lo que trataba.
+    if (!previous) return undefined;
+    const { draftId: _draftId, draftTitle: _draftTitle, ...rest } = previous;
+    void _draftId;
+    void _draftTitle;
+    return { ...rest, at: now };
   }
   if (outcome.kind === "borrador") {
     return {

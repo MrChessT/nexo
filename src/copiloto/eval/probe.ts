@@ -20,7 +20,7 @@ const phrases = process.argv.slice(2);
 async function main() {
 for (const message of phrases) {
   const turns = process.env.PROBE_TURNS ? JSON.parse(process.env.PROBE_TURNS) : [];
-  const built = await buildRouting(message, "/", undefined, turns, fixtureContext(), new LexicalRetriever(), true);
+  const built = await buildRouting(message, "/", undefined, turns, fixtureContext(), new LexicalRetriever(), true, process.env.PROBE_DRAFT);
   const r = await jev.evaluate(built.state as unknown as EntryType, built.questions);
   for (const id of (process.env.PROBE_IDS ?? "intent,tipo_accion").split(",")) {
     const raw = r.answers[id];

@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.3";
+export const CATALOG_VERSION = "2026-09-24.5";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -87,6 +87,12 @@ export const MOTIVOS_MERMA = {
 } as const satisfies ChoiceCriteria;
 export type MotivoMerma = keyof typeof MOTIVOS_MERMA;
 
+export const BORRADOR = {
+  confirmar: "The message accepts the proposed operation as it is.",
+  cancelar: "The message rejects, cancels or discards the proposed operation.",
+  ninguno: "Neither: it asks something, changes the operation or requests something different.",
+} as const satisfies ChoiceCriteria;
+
 export const NO_INDICADO = "no_indicado";
 export const TODOS = "todos";
 export const NO_APLICA = "no_aplica";
@@ -128,6 +134,8 @@ export const LABELS: Record<string, string> = {
   cambiar_minimo: "Cambiar mínimo",
   archivar_producto: "Archivar producto",
   preparar_pedido: "Preparar pedido",
+  confirmar: "Confirmar",
+  cancelar: "Descartar",
   hoy: "Hoy",
   ayer: "Ayer",
   semana: "Esta semana",
@@ -154,6 +162,8 @@ export interface RoutingSegmentInput {
 }
 
 export interface RoutingInput {
+  /** Hay un borrador esperando: se pregunta si el mensaje lo confirma o lo cancela. */
+  pendingDraft?: boolean;
   locations: string[];
   areas: string[];
   segments: RoutingSegmentInput[];
@@ -162,6 +172,8 @@ export interface RoutingInput {
 
 export interface RoutingState {
   message: string;
+  /** Borrador que el asistente acaba de proponer y espera respuesta (solo si lo hay). */
+  pending_draft?: string;
   current_page: string;
   current_location: string | null;
   recent_turns: Array<{ role: "user" | "assistant"; text: string }>;
@@ -213,6 +225,13 @@ export function routingQuestions(input: RoutingInput): Questions {
     questions.espacio = choice(
       "Which storage area inside a venue (bar, storeroom, cold room…) does `message` mention?",
       options(input.areas, { [NO_INDICADO]: "No storage area is mentioned." }),
+    );
+  }
+
+  if (input.pendingDraft) {
+    questions.borrador = choice(
+      "The assistant has just proposed `pending_draft` and is waiting for an answer. Does `message` confirm it (yes, ok, go ahead, do it, confirm), cancel or discard it, or neither (a question, a change or a different request)?",
+      BORRADOR,
     );
   }
 

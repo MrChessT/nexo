@@ -45,6 +45,8 @@ export function renderTemplate(report: DecisionReport): string {
     }
     case "error":
       return o.message;
+    case "resuelto":
+      return o.message;
     case "consulta":
       return renderQuery(o);
   }

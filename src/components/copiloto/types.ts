@@ -171,6 +171,12 @@ export type Draft =
       }>;
     });
 
+export interface ResolvedEvent {
+  draftId: string;
+  status: "confirmado" | "descartado";
+  message: string;
+}
+
 export interface ErrorEvent {
   code: string;
   message: string;

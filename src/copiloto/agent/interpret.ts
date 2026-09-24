@@ -92,8 +92,16 @@ export interface CatalogPlan {
   periodo?: Periodo;
 }
 
+/** Respuesta a un borrador pendiente desde el chat («sí, adelante», «cancélalo»). */
+export interface DraftAnswerPlan {
+  type: "borrador";
+  action: "confirmar" | "cancelar";
+  draftId: string;
+}
+
 export type Plan =
   | ClarifyPlan
+  | DraftAnswerPlan
   | CatalogPlan
   | QueryPlan
   | NavigatePlan
@@ -190,6 +198,10 @@ export class Interpreter {
       return { intent: "fuera_de_ambito", decisions: this.decisions, plan: { type: "bloqueado" } };
     }
 
+    // Hay un borrador esperando respuesta: «sí, adelante» o «cancélalo» se resuelven antes que nada.
+    const draftAnswer = this.draftAnswer();
+    if (draftAnswer) return this.done("proponer_accion", draftAnswer);
+
     const rawIntent = this.choice("intent");
     if (!rawIntent) throw new Error("Falta la respuesta de intent");
     const intentValue = rawIntent.choice as Intent;
@@ -223,6 +235,27 @@ export class Interpreter {
       case "proponer_accion":
         return this.done(intentValue, this.action());
     }
+  }
+
+  /** Confirmar o descartar el borrador pendiente. Ejecutar exige mucha seguridad; si no, se pregunta. */
+  private draftAnswer(): Plan | null {
+    const draftId = this.focus?.draftId;
+    const answer = this.choice("borrador");
+    if (!draftId || !answer || answer.choice === NINGUNO) return null;
+    const g = gateChoice(answer, this.thresholds.borrador_chat);
+    const action = g.choice as "confirmar" | "cancelar";
+    this.decisions.push({ id: "borrador", label: "Borrador pendiente", value: action, valueLabel: label(action), probability: g.probability, confidence: g.confidence, gate: g.outcome });
+    if (g.outcome === "actuar") return { type: "borrador", action, draftId };
+    if (g.outcome === "confirmar") {
+      const title = this.focus?.draftTitle ?? "el borrador";
+      return {
+        type: "clarify",
+        field: "borrador",
+        question: action === "confirmar" ? `¿Confirmo «${title}»?` : `¿Descarto «${title}»?`,
+        options: [{ id: action, label: action === "confirmar" ? "Sí, confírmalo" : "Sí, descártalo", probability: g.probability }],
+      };
+    }
+    return null;
   }
 
   private done(intent: Intent, plan: Plan): Interpretation {

@@ -49,6 +49,8 @@ export async function buildRouting(
   ctx: SessionContext,
   retriever: Retriever,
   selfConsistency: boolean,
+  /** Título del borrador que espera respuesta: se pregunta si el mensaje lo confirma o cancela. */
+  pendingDraft?: string,
 ): Promise<RoutingRequest> {
   const parsed = parseQuantities(message);
   // Sin cantidades: un segmento "mención" con el mensaje completo, para consultas del tipo "¿cuánto ron queda?".
@@ -85,6 +87,7 @@ export async function buildRouting(
 
   const state: RoutingState = {
     message,
+    ...(pendingDraft ? { pending_draft: pendingDraft } : {}),
     current_page: page,
     current_location: currentLocation,
     recent_turns: turns.slice(-4),
@@ -92,6 +95,7 @@ export async function buildRouting(
   };
 
   const questions = routingQuestions({
+    pendingDraft: !!pendingDraft,
     locations: [...locationKeys.keys()],
     areas: [...areaKeys.keys()],
     segments: routingSegments.map((rs) => ({

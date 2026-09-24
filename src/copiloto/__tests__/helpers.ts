@@ -15,6 +15,9 @@ import type { ChatMessages, WriterProvider } from "../writer/provider";
 import { Writer } from "../writer/writer";
 import { DraftBuilder } from "../drafts/builder";
 import { DraftStore } from "../drafts/store";
+import { ConfirmService } from "../drafts/confirm";
+import { FixtureWriter } from "../dev/fixture-writer";
+import { randomUUID } from "node:crypto";
 
 export const NOW = new Date("2026-09-23T12:00:00Z"); // miércoles
 
@@ -119,6 +122,9 @@ export function makeAgent(jev: JevPort, provider: WriterProvider | null = null) 
   const audit = new MemoryAuditSink();
   const sessions = new SessionStore(undefined, new LruCache(100, 60_000));
   const drafts = new DraftStore();
+  // Confirmación por chat como en producción: mismo servicio que el botón, escritura simulada.
+  const writer = new FixtureWriter();
+  const confirmService = new ConfirmService(drafts, audit, () => NOW);
   const agent = new Agent({
     jev,
     tools: new InventoryTools(new FixtureDataSource(NOW)),
@@ -131,9 +137,10 @@ export function makeAgent(jev: JevPort, provider: WriterProvider | null = null) 
     selfConsistency: true,
     drafts,
     builder: new DraftBuilder(),
+    confirmDraft: (draftId) => confirmService.confirm({ orgId: ORG_ID, draftId, idempotencyKey: randomUUID() }, fixtureContext(), writer),
     now: () => NOW,
   });
-  return { agent, metrics, audit, sessions, drafts };
+  return { agent, metrics, audit, sessions, drafts, writer, confirmService };
 }
 
 export const SESSION_ID = "5b1a3f4e-9c2d-4e8f-a1b2-c3d4e5f6a7b8";

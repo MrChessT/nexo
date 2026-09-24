@@ -42,6 +42,9 @@ const DEFAULTS = {
   // Continuación de la conversación (noul, "sí" es heredar): ≥ act → se hereda lo que falte.
   // Medido con Jev real: continuaciones 0,80-0,91; preguntas nuevas tras la misma charla 0,37-0,54.
   seguimiento: { act: 0.65, ask: 0.65 },
+  // Confirmar o descartar por chat un borrador pendiente: ejecutar exige mucha seguridad;
+  // entre ask y act se pregunta «¿lo confirmo?».
+  borrador_chat: { act: 0.9, ask: 0.6 },
   // Autoconsistencia: probabilidad mínima de que intent_alt coincida con intent.
   consistencia: { act: 0.5, ask: 0.5 },
 } satisfies Record<string, GateSpec>;

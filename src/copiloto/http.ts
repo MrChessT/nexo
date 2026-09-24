@@ -1,5 +1,6 @@
 // Endpoints del asistente como funciones de la app (sin servidor aparte). Cada petición trabaja con el
 // JWT del usuario: RLS activo, sin service role. El contrato está en docs/copiloto/CONTRACT.md.
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Analytics } from "./analytics/analytics";
 import { SessionStore } from "./agent/session";
@@ -84,7 +85,19 @@ async function chat(request: Request, user: RequestUser): Promise<Response> {
           (event) => {
             controller.enqueue(encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`));
           },
-          { tools: scope.tools, audit: scope.audit, sessions: scope.sessions, drafts: scope.drafts },
+          {
+            tools: scope.tools,
+            audit: scope.audit,
+            sessions: scope.sessions,
+            drafts: scope.drafts,
+            // «Sí, adelante»: mismo servicio que el botón, con el rol comprobado sobre datos frescos.
+            confirmDraft: async (draftId) => {
+              const fresh = await loadContext(user, true);
+              const result = await rt.confirm.confirm({ orgId: user.orgId, draftId, idempotencyKey: randomUUID() }, fresh, scope.writer, scope.audit, scope.drafts);
+              if (result.ok && (CATALOG_KINDS as readonly string[]).includes(result.kind)) rt.contexts.delete(`${user.userId}:${user.orgId}`);
+              return result;
+            },
+          },
         );
       } finally {
         controller.close();
