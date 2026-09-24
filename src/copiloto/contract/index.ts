@@ -93,7 +93,8 @@ export type ClarifyField =
   | "proveedor"
   | "formato"
   | "duplicado"
-  | "sentido";
+  | "sentido"
+  | "borrador";
 
 export interface ClarifyEvent {
   clarifyId: string;
@@ -111,6 +112,13 @@ export type ErrorCode =
   | "jev_unavailable"
   | "data_unavailable"
   | "internal";
+
+/** Un borrador anterior se ha confirmado o descartado desde el chat: la tarjeta deja de ofrecer el botón. */
+export interface ResolvedEvent {
+  draftId: string;
+  status: "confirmado" | "descartado";
+  message: string;
+}
 
 export interface ErrorEvent {
   code: ErrorCode;
@@ -382,6 +390,7 @@ export type SseEvent =
   | { event: "draft"; data: Draft }
   | { event: "chart"; data: ChartSpec }
   | { event: "clarify"; data: ClarifyEvent }
+  | { event: "resolved"; data: ResolvedEvent }
   | { event: "error"; data: ErrorEvent }
   | { event: "done"; data: DoneEvent };
 

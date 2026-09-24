@@ -26,16 +26,45 @@ export interface PendingClarify {
   overrides: Record<string, string>;
 }
 
+/**
+ * De qué va la conversación: lo último consultado o propuesto. Si el siguiente mensaje continúa
+ * («¿y en el Vivero?», «¿y la semana pasada?»), se hereda lo que ese mensaje no diga.
+ */
+export interface Focus {
+  kind: "consulta" | "borrador";
+  /** Consulta (herramienta) o acción del último mensaje. */
+  tool?: string;
+  accion?: string;
+  /** Solo locales y productos que el usuario llegó a indicar (no los supuestos por defecto). */
+  locationIds: string[];
+  productIds: string[];
+  periodo: string;
+  /** Borrador pendiente de confirmar (para «sí, adelante» o «cancélalo»). */
+  draftId?: string;
+  draftTitle?: string;
+  /** Epoch ms: el foco caduca (ver FOCUS_TTL_MS). */
+  at: number;
+}
+
+/** Pasado este tiempo sin hablar, lo anterior ya no se da por supuesto. */
+export const FOCUS_TTL_MS = 30 * 60 * 1000;
+
+export function activeFocus(session: Session, now: number): Focus | undefined {
+  return session.focus && now - session.focus.at <= FOCUS_TTL_MS ? session.focus : undefined;
+}
+
 export interface Session {
   userId: string;
   turns: Turn[];
   clarifies: Map<string, PendingClarify>;
+  focus?: Focus;
 }
 
 /** Forma JSON de una sesión (los Map se guardan como pares). */
 export interface SerializedSession {
   userId: string;
   turns: Turn[];
+  focus?: Focus;
   clarifies: Array<[string, SerializedClarify]>;
 }
 
@@ -64,6 +93,7 @@ export function serializeSession(session: Session): SerializedSession {
   return {
     userId: session.userId,
     turns: session.turns,
+    ...(session.focus ? { focus: session.focus } : {}),
     clarifies: [...session.clarifies.entries()].map(([id, c]) => {
       const { routing, ...rest } = c;
       if (!routing) return [id, rest];
@@ -89,6 +119,7 @@ export function deserializeSession(data: SerializedSession): Session {
   return {
     userId: data.userId,
     turns: data.turns ?? [],
+    ...(data.focus ? { focus: data.focus } : {}),
     clarifies: new Map(
       (data.clarifies ?? []).map(([id, c]) => {
         const { routing, ...rest } = c;

@@ -13,7 +13,7 @@ export interface WriteResult {
 }
 
 /** Resultados que siempre se dicen con plantilla: son fijos o de seguridad. */
-const TEMPLATE_ONLY = new Set(["aclaracion", "fuera_de_ambito", "bloqueado", "error", "navegacion"]);
+const TEMPLATE_ONLY = new Set(["aclaracion", "fuera_de_ambito", "bloqueado", "error", "navegacion", "resuelto"]);
 
 const MAX_CHARS = 900;
 // Sin "$": un "1." al final de un fragmento puede ser el principio de "1.400".

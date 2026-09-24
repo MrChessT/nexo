@@ -5,12 +5,12 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.3";
+export const CATALOG_VERSION = "2026-09-24.8";
 
 // Opciones fijas --------------------------------------------------------------
 
 export const INTENTS = {
-  consultar: "Get figures or facts from inventory data: stock levels, movements, prices, pending transfers, count differences.",
+  consultar: "Get figures or facts from inventory data: stock levels, movements and consumption, prices, purchases and spending with suppliers, purchase orders, pending transfers, count differences.",
   navegar: "Open or go to a screen of the app, without asking for figures or changes.",
   proponer_accion:
     "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing a purchase order to a supplier.",
@@ -47,6 +47,8 @@ export const HERRAMIENTAS = {
   query_pending_transfers: "Transfers that were sent but not yet received.",
   query_count_variance: "Differences found in stock counts.",
   query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption.",
+  query_orders: "Purchase orders already placed with suppliers: drafts not sent, orders pending delivery, late deliveries.",
+  query_spend: "How much money was spent on purchases (goods received) per supplier over a period.",
   ninguna: "No data lookup is needed.",
 } as const satisfies ChoiceCriteria;
 export type Herramienta = keyof typeof HERRAMIENTAS;
@@ -87,6 +89,12 @@ export const MOTIVOS_MERMA = {
 } as const satisfies ChoiceCriteria;
 export type MotivoMerma = keyof typeof MOTIVOS_MERMA;
 
+export const BORRADOR = {
+  confirmar: "The message accepts the proposed operation as it is.",
+  cancelar: "The message rejects, cancels or discards the proposed operation.",
+  ninguno: "Neither: it asks something, changes the operation or requests something different.",
+} as const satisfies ChoiceCriteria;
+
 export const NO_INDICADO = "no_indicado";
 export const TODOS = "todos";
 export const NO_APLICA = "no_aplica";
@@ -119,6 +127,8 @@ export const LABELS: Record<string, string> = {
   query_pending_transfers: "Traspasos pendientes",
   query_count_variance: "Desvíos de inventario",
   query_reorder: "Qué reponer",
+  query_orders: "Pedidos",
+  query_spend: "Gasto en compras",
   merma: "Registrar merma",
   traspaso: "Traspaso entre locales",
   recepcion: "Recepción de mercancía",
@@ -128,6 +138,8 @@ export const LABELS: Record<string, string> = {
   cambiar_minimo: "Cambiar mínimo",
   archivar_producto: "Archivar producto",
   preparar_pedido: "Preparar pedido",
+  confirmar: "Confirmar",
+  cancelar: "Descartar",
   hoy: "Hoy",
   ayer: "Ayer",
   semana: "Esta semana",
@@ -154,6 +166,8 @@ export interface RoutingSegmentInput {
 }
 
 export interface RoutingInput {
+  /** Hay un borrador esperando: se pregunta si el mensaje lo confirma o lo cancela. */
+  pendingDraft?: boolean;
   locations: string[];
   areas: string[];
   segments: RoutingSegmentInput[];
@@ -162,6 +176,8 @@ export interface RoutingInput {
 
 export interface RoutingState {
   message: string;
+  /** Borrador que el asistente acaba de proponer y espera respuesta (solo si lo hay). */
+  pending_draft?: string;
   current_page: string;
   current_location: string | null;
   recent_turns: Array<{ role: "user" | "assistant"; text: string }>;
@@ -216,6 +232,13 @@ export function routingQuestions(input: RoutingInput): Questions {
     );
   }
 
+  if (input.pendingDraft) {
+    questions.borrador = choice(
+      "The assistant has just proposed `pending_draft` and is waiting for an answer. Does `message` confirm it (yes, ok, go ahead, do it, confirm), cancel or discard it, or neither (a question, a change or a different request)?",
+      BORRADOR,
+    );
+  }
+
   if (input.selfConsistency) {
     questions.intent_alt = choice("Is `message` asking to read information, to change something, or neither?", INTENT_ALT);
   }
@@ -247,7 +270,7 @@ export function routingQuestions(input: RoutingInput): Questions {
 
 // Llamada nº 2: evaluación de datos calculados por el código ---------------------
 
-export type EvalKind = "reponer" | "desvio" | "subida" | "atasco";
+export type EvalKind = "reponer" | "desvio" | "subida" | "atasco" | "pedido" | "conteo";
 
 export const URGENCY_LEVELS = [
   "baja: can wait; informational only.",
@@ -267,6 +290,10 @@ const EVAL_INSTRUCTIONS: Record<EvalKind, (i: number) => string> = {
     `Is the price change in \`items.${i}\` (\`items.${i}.old_price\` to \`items.${i}.new_price\`, \`items.${i}.change_pct\`) significant for a hospitality buyer?`,
   atasco: (i) =>
     `Has transfer \`items.${i}\` (sent \`items.${i}.sent_ago\`, value \`items.${i}.value\`) been in transit long enough to follow up?`,
+  pedido: (i) =>
+    `Does purchase order \`items.${i}\` (\`items.${i}.state\`, age \`items.${i}.age\`, expected \`items.${i}.expected\`, value \`items.${i}.value\`) need the manager to act now (chase the supplier or send the draft)?`,
+  conteo: (i) =>
+    `Is it time to count stock at \`items.${i}.venue\`, given \`items.${i}.days_since_count\` without a count and \`items.${i}.stock_value\` in stock?`,
 };
 
 const EVAL_CRITERIA: Partial<Record<EvalKind, { true: string; false: string }>> = {

@@ -33,7 +33,7 @@ export function renderTemplate(report: DecisionReport): string {
     case "bloqueado":
       return "No puedo hacer eso. Pregúntame por el stock, los movimientos o las operaciones de tus locales.";
     case "conversacion":
-      return "Puedo consultar stock, movimientos, precios, traspasos pendientes y desvíos de inventario, llevarte a cualquier pantalla y preparar operaciones para que las confirmes: mermas, traspasos, recepciones, cambios de precio, altas de producto, mínimos y archivar productos. Antes de proponer un cambio compruebo duplicados y cifras raras. Prueba con «¿cuánto ron queda en Parador?», «el Barceló ahora cuesta 15 €» o «añade Ginebra Nordés 70 cl».";
+      return "Puedo consultar stock, consumo, mermas, precios, pedidos pendientes, gasto por proveedor y desvíos de inventario, y preparar operaciones para que las confirmes: pedidos, mermas, traspasos, recepciones, precios, altas de producto, mínimos y archivar. Recuerdo de qué hablamos («¿y en el Vivero?») y puedes confirmar con un «sí, adelante». Antes de proponer un cambio compruebo duplicados y cifras raras. Prueba con «prepara el pedido de la semana para Parador» o «¿cuánto he gastado este mes?».";
     case "navegacion":
       return o.navigate.auto ? `Te llevo a ${o.destino}.` : `¿Quieres ir a ${o.destino}?`;
     case "borrador": {
@@ -44,6 +44,8 @@ export function renderTemplate(report: DecisionReport): string {
       return `He preparado un borrador: ${o.draft.title}. Revísalo y confírmalo si es correcto.`;
     }
     case "error":
+      return o.message;
+    case "resuelto":
       return o.message;
     case "consulta":
       return renderQuery(o);
@@ -62,6 +64,8 @@ function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>
       query_pending_transfers: `No hay traspasos pendientes de recibir ${where}.`,
       query_count_variance: `No hay desvíos de inventario ${where}.`,
       query_reorder: `No falta nada ${where} para ${result.totals.horizonte ?? "los próximos días"}.`,
+      query_orders: `No hay pedidos abiertos ${where}.`,
+      query_spend: `No hay compras registradas ${where}.`,
     };
     return `${empty[result.tool].replace(/\s+\./, ".")}${notice}`;
   }
@@ -96,6 +100,13 @@ function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>
         : list(result.rows, (r) => `${r.producto} (${r.local}): ${r.diferencia}, ${r.valor}`);
       return `${head}\n${body}${notice}`;
     }
+    case "query_orders": {
+      const t = result.totals;
+      const head = `${plural(t.pendientes ?? "0", "pedido pendiente", "pedidos pendientes")} de recibir (${t.valor_pendiente})${t.retrasados !== "0" ? `, ${t.retrasados} con retraso` : ""}${t.borradores !== "0" ? ` y ${plural(t.borradores ?? "0", "borrador sin enviar", "borradores sin enviar")}` : ""}.`;
+      return `${head}\n${list(result.rows, (r) => `${r.proveedor} → ${r.local}: ${r.estado}${r.retraso ? " ⚠ con retraso" : ""}, entrega ${r.entrega}, ${r.importe}`)}${more}${notice}`;
+    }
+    case "query_spend":
+      return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}${notice}`;
     case "query_reorder": {
       if (evaluations.length === 0) {
         return `Para ${result.totals.horizonte} conviene reponer ${plural(result.totals.productos ?? "0", "producto", "productos")}:\n${list(

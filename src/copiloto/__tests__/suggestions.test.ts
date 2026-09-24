@@ -15,7 +15,7 @@ const tools = new InventoryTools(new FixtureDataSource(NOW));
 
 describe("motor de sugerencias", () => {
   it("una sola llamada a Jev para todos los candidatos; filtra por relevancia y ordena por urgencia", async () => {
-    // Orden de candidatos: reponer (5) → traspaso (1) → desvíos (2) → precios (1)
+    // Orden de candidatos: reponer (5) → traspaso (1) → desvíos (2) → precios (1) → pedidos (1) → locales sin inventario (2)
     const jev = new FakeJev([
       {
         reponer_0: 0.9, urgencia_0: 2,
@@ -31,7 +31,7 @@ describe("motor de sugerencias", () => {
     ]);
     const result = await engine(jev).suggest(fixtureContext(), tools, { limit: 8 });
     expect(jev.calls).toHaveLength(1);
-    expect(Object.keys(jev.calls[0]!.questions)).toHaveLength(18);
+    expect(Object.keys(jev.calls[0]!.questions)).toHaveLength(24);
     expect(result.items.map((s) => [s.kind, s.urgency])).toEqual([
       ["traspaso_pendiente", "critica"],
       ["desvio_inventario", "critica"],
@@ -62,5 +62,22 @@ describe("motor de sugerencias", () => {
     expect(good.items[0]!.text).toBe("El traspaso de Parador a Vivero lleva 3 días sin recibirse: revísalo.");
     const bad = await engine(new FakeJev([{ atasco_5: 0.95, urgencia_5: 3 }]), new FakeProvider([["Lleva 5 días sin recibirse."]])).suggest(fixtureContext(), tools, { limit: 1 });
     expect(bad.items[0]!.text).toContain("3 días");
+  });
+});
+
+describe("avisos de pedidos e inventarios", () => {
+  it("pedido con retraso y locales con stock sin inventario reciente", async () => {
+    const jev = new FakeJev([{ pedido_9: 0.9, urgencia_9: 2, conteo_10: 0.8, urgencia_10: 1, conteo_11: 0.8, urgencia_11: 1 }]);
+    const result = await engine(jev).suggest(fixtureContext(), tools, { limit: 8 });
+    const byKind = (kind: string) => result.items.filter((s) => s.kind === kind);
+    expect(byKind("pedido_pendiente")[0]).toMatchObject({
+      text: expect.stringMatching(/^Pedido a Distribuciones Canarias para Parador con retraso \(entrega .+, 184,80 €\)\.$/),
+      action: { route: "/pedidos" },
+    });
+    // Parador contó hace 5 días; Vivero y Pickels tienen stock y ningún inventario cerrado.
+    expect(byKind("inventario_pendiente").map((s) => s.text).sort()).toEqual([
+      expect.stringMatching(/^Pickels: más de 60 días sin inventario, con .+ € en stock\.$/),
+      expect.stringMatching(/^Vivero: más de 60 días sin inventario, con .+ € en stock\.$/),
+    ]);
   });
 });

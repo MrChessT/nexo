@@ -12,6 +12,8 @@ import type {
   MovementRaw,
   OpenCountRaw,
   OpenOrderRaw,
+  OrderRaw,
+  PurchaseRaw,
   PriceRaw,
   SupplierPriceRaw,
   TransferRaw,
@@ -195,6 +197,56 @@ export class SupabaseDataSource implements InventoryDataSource {
       out.push({ locationId: order.location_id, productId: pack.product_id, qtyBase: pendingPacks.mul(pack.qty_base).toString() });
     }
     return out;
+  }
+
+  /** Pedidos por estado. Sin la migración 0012 devuelve vacío (la consulta dice que no hay pedidos). */
+  async orders(filter: { locationIds: string[]; statuses: OrderRaw["status"][] }): Promise<OrderRaw[]> {
+    if (filter.locationIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("purchase_orders")
+      .select("id,location_id,status,created_at,sent_at,expected_date,supplier:suppliers(name),lines:purchase_order_lines(packs_qty:packs_qty::text,pack_price:pack_price::text,received_packs:received_packs::text,pack:product_packs(product_id))")
+      .in("location_id", filter.locationIds)
+      .in("status", filter.statuses)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) return [];
+    return ((data ?? []) as Row[]).map((r) => ({
+      id: String(r.id),
+      locationId: String(r.location_id),
+      supplierName: (r.supplier as { name?: string } | null)?.name ?? "proveedor",
+      status: r.status as OrderRaw["status"],
+      createdAt: String(r.created_at),
+      sentAt: strOrNull(r.sent_at),
+      expectedDate: strOrNull(r.expected_date),
+      lines: ((r.lines as Row[] | null) ?? []).map((l) => ({
+        productId: String((l.pack as { product_id?: string } | null)?.product_id ?? ""),
+        packsQty: str(l.packs_qty),
+        packPrice: strOrNull(l.pack_price),
+        receivedPacks: str(l.received_packs),
+      })),
+    }));
+  }
+
+  async purchases(filter: { locationIds: string[]; since: string }): Promise<PurchaseRaw[]> {
+    if (filter.locationIds.length === 0) return [];
+    const rows = check<Row[]>(
+      "las compras",
+      await this.db
+        .from("goods_receipts")
+        .select("id,location_id,supplier_id,doc_date,supplier:suppliers(name),lines:receipt_lines(packs_qty:packs_qty::text,pack_price:pack_price::text)")
+        .in("location_id", filter.locationIds)
+        .eq("status", "closed")
+        .gte("doc_date", filter.since)
+        .limit(2000),
+    );
+    return rows.map((r) => ({
+      receiptId: String(r.id),
+      locationId: String(r.location_id),
+      supplierId: strOrNull(r.supplier_id),
+      supplierName: (r.supplier as { name?: string } | null)?.name ?? null,
+      docDate: String(r.doc_date),
+      total: ((r.lines as Row[] | null) ?? []).reduce((acc, l) => acc.plus(new Decimal(str(l.packs_qty)).mul(str(l.pack_price))), new Decimal(0)).toString(),
+    }));
   }
 
   async countResults(filter: DataFilter & { since: string }): Promise<CountResultRaw[]> {

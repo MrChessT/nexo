@@ -57,6 +57,22 @@ Local en pedidos: la pregunta `local` duda a veces porque la mercancía llega *a
 
 Evaluación completa (59 frases): 92 % correcto, 8 % preguntas de más y **0 borradores equivocados**. «hazme la lista de la compra» ahora pregunta entre consultar y preparar el pedido: es ambiguo de verdad.
 
+## Memoria, confirmación por chat, pedidos y gasto (24/09/2026)
+
+Catálogo `2026-09-24.8`. Todo medido con Jev real antes de adoptarlo.
+
+| Pregunta | Uso | Medición |
+| --- | --- | --- |
+| `seguimiento` (ya existía, sin usar) | Si ≥ 0,65, la consulta hereda del **foco** (última consulta o borrador) el producto, el local, el periodo o la herramienta que el mensaje no dice, y lo avisa | Continuaciones («¿y en el Vivero?», «¿y el Brugal?») 0,80-0,91; preguntas nuevas tras la misma charla 0,37-0,54 |
+| `borrador` (solo si hay uno pendiente) | Confirmar (≥ 0,9) o descartar desde el chat; si duda, pregunta. Con avisos en «revisar» no confirma | 10/10: «sí, adelante», «vale», «perfecto, hazlo» → confirmar; «cancélalo» → descartar; «mejor 3 botellas», «¿cuánto ron queda?», «espera» → ninguno |
+| `herramienta`: `query_orders`, `query_spend` | Pedidos pendientes, retrasados o en borrador; gasto por proveedor | 7/7 herramientas correctas |
+| `intent.consultar` | Ahora incluye compras, gasto y pedidos | «¿cuánto he gastado este mes?» pasaba por fuera de ámbito (0,65); ahora consultar (0,89). Lo ajeno sigue en 1,00 |
+| Valoración `pedido`, `conteo` | Avisos proactivos: pedidos retrasados o borradores olvidados; locales sin inventario reciente | Prioriza lo grave (local sin contar 60+ días 0,95; pedido retrasado 0,87) sobre lo menor (borrador de ayer 0,60; contado hace 16 días 0,51) |
+
+Hábitos por usuario (tabla `copilot_profiles`): el local habitual (≥ 5 usos y ≥ 70 %) solo se propone marcado «Revisa el local», y los productos frecuentes solo ordenan las opciones de una aclaración.
+
+Evaluación completa (64 frases): 94 % correcto, 6 % preguntas de más, **0 borradores equivocados**.
+
 ## Decisión de idioma
 
 La documentación de Jev indica que **el inglés es su idioma principal** y que en otros idiomas la precisión es algo menor.

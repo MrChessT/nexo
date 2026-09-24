@@ -129,7 +129,91 @@ export class InventoryTools implements Tools {
         return this.countVariance(params, ctx);
       case "query_reorder":
         return this.reorder(params, ctx);
+      case "query_orders":
+        return this.orders(params, ctx);
+      case "query_spend":
+        return this.spend(params, ctx);
     }
+  }
+
+  /** Pedidos abiertos: borradores sin enviar, pendientes de recibir y retrasados. */
+  private async orders(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
+    const today = dayOf(params.now);
+    const raw = await this.source.orders({ locationIds: params.locationIds, statuses: ["draft", "sent", "partial"] });
+    const productIds = params.productIds;
+    const relevant = productIds.length > 0 ? raw.filter((o) => o.lines.some((l) => productIds.includes(l.productId))) : raw;
+    const STATUS: Record<string, string> = { draft: "borrador sin enviar", sent: "enviado", partial: "recibido en parte" };
+    const lines = relevant.map((o) => {
+      const pendingValue = o.lines.reduce((acc, l) => {
+        const left = Decimal.max(0, new Decimal(l.packsQty).minus(l.receivedPacks));
+        return acc.plus(left.mul(l.packPrice ?? 0));
+      }, new Decimal(0));
+      const sentDays = o.sentAt ? Math.floor((params.now.getTime() - new Date(o.sentAt).getTime()) / 86_400_000) : null;
+      // Retraso: pasó la fecha prevista o, sin fecha, lleva más de 3 días enviado.
+      const late = o.status !== "draft" && ((o.expectedDate !== null && o.expectedDate < today) || (o.expectedDate === null && sentDays !== null && sentDays > 3));
+      return { o, pendingValue, late };
+    });
+    lines.sort((a, b) => Number(b.late) - Number(a.late) || Number(b.o.status !== "draft") - Number(a.o.status !== "draft"));
+    const rows: ToolRow[] = lines.map(({ o, pendingValue, late }) => ({
+      id: o.id,
+      proveedor: o.supplierName,
+      local: locationName(ctx, o.locationId),
+      estado: STATUS[o.status] ?? o.status,
+      entrega: o.expectedDate ? formatDay(o.expectedDate) : "sin fecha",
+      retraso: late,
+      importe: formatMoney(pendingValue),
+    }));
+    const pending = lines.filter((l) => l.o.status !== "draft");
+    // Aviso proactivo: pedidos con retraso y borradores olvidados (más de un día sin enviar).
+    const ageDays = (iso: string) => Math.floor((params.now.getTime() - new Date(iso).getTime()) / 86_400_000);
+    const evalItems: EvalItem[] = lines
+      .filter(({ o, late }) => late || (o.status === "draft" && ageDays(o.createdAt) >= 1))
+      .map(({ o, pendingValue, late }) => ({
+        kind: "pedido",
+        key: `pedido:${o.id}`,
+        locationId: o.locationId,
+        data: {
+          supplier: o.supplierName,
+          venue: locationName(ctx, o.locationId),
+          state: late ? "retrasado" : "borrador",
+          age: `${ageDays(o.sentAt ?? o.createdAt)} días`,
+          expected: o.expectedDate ? formatDay(o.expectedDate) : "sin fecha",
+          value: formatMoney(pendingValue),
+        },
+      }));
+    return finish("query_orders", rows, {
+      pendientes: String(pending.length),
+      borradores: String(lines.length - pending.length),
+      retrasados: String(lines.filter((l) => l.late).length),
+      valor_pendiente: formatMoney(pending.reduce((acc, l) => acc.plus(l.pendingValue), new Decimal(0))),
+    }, evalItems);
+  }
+
+  /** Gasto en compras (recepciones contabilizadas) por proveedor en el periodo; 30 días si no se indica. */
+  private async spend(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
+    void ctx;
+    const today = dayOf(params.now);
+    const from = params.period?.from ?? addDays(today, -29);
+    const to = params.period?.to ?? today;
+    const raw = (await this.source.purchases({ locationIds: params.locationIds, since: from })).filter((p) => p.docDate <= to);
+    const bySupplier = new Map<string, { total: Decimal; receipts: number }>();
+    for (const p of raw) {
+      const key = p.supplierName ?? "Sin proveedor";
+      const entry = bySupplier.get(key) ?? { total: new Decimal(0), receipts: 0 };
+      entry.total = entry.total.plus(p.total);
+      entry.receipts += 1;
+      bySupplier.set(key, entry);
+    }
+    const total = [...bySupplier.values()].reduce((acc, e) => acc.plus(e.total), new Decimal(0));
+    const rows: ToolRow[] = [...bySupplier.entries()]
+      .sort((a, b) => b[1].total.cmp(a[1].total))
+      .map(([name, e]) => ({
+        proveedor: name,
+        albaranes: String(e.receipts),
+        importe: formatMoney(e.total),
+        porcentaje: `${formatDecimal(pct(e.total, total) ?? new Decimal(0), 1)} %`,
+      }));
+    return finish("query_spend", rows, { total: formatMoney(total), albaranes: String(raw.length), desde: formatDay(from), hasta: formatDay(to) });
   }
 
   private async stock(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, Loader2, Send, ShieldAlert, Sparkles, X } from "lucide-react";
 import { ChartCard } from "@/components/charts/charts";
 import { euros } from "@/lib/format";
-import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, Suggestion } from "./types";
+import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion } from "./types";
 import "./copiloto.css";
 
 type Item =
@@ -19,6 +19,8 @@ type Item =
       navigate?: NavigateEvent;
       clarify?: ClarifyEvent;
       draft?: Draft;
+      /** El borrador se confirmó o descartó después, desde el chat. */
+      resolved?: ResolvedEvent;
       charts?: ChartSpec[];
       error?: string;
     };
@@ -39,9 +41,10 @@ const ROUTE_LABELS: Record<AppRoute, string> = {
 
 const EXAMPLES = [
   "¿Qué me falta para el finde?",
-  "¿Cuánto ron queda en Parador?",
+  "Prepara el pedido de la semana",
+  "¿Qué pedidos tengo pendientes?",
+  "¿Cuánto he gastado este mes?",
   "El Barceló ahora cuesta 15 €",
-  "Añade Ginebra Nordés 70 cl a 18 €",
 ];
 
 const DECIMAL = /^\d+([.,]\d+)?$/;
@@ -178,7 +181,10 @@ export function Copiloto() {
             setPendingClarify(data as ClarifyEvent);
             update(assistantId, () => ({ clarify: data as ClarifyEvent }));
           } else if (event === "draft") update(assistantId, () => ({ draft: data as Draft }));
-          else if (event === "chart") update(assistantId, (item) => ({ charts: [...(item.charts ?? []), data as ChartSpec] }));
+          else if (event === "resolved") {
+            const r = data as ResolvedEvent;
+            setItems((prev) => prev.map((item) => (item.role === "assistant" && item.draft?.draftId === r.draftId ? { ...item, resolved: r } : item)));
+          } else if (event === "chart") update(assistantId, (item) => ({ charts: [...(item.charts ?? []), data as ChartSpec] }));
           else if (event === "error") update(assistantId, () => ({ error: (data as ErrorEvent).message }));
           else if (event === "done") update(assistantId, () => ({ text: (data as DoneEvent).text, pending: false }));
         }
@@ -302,7 +308,7 @@ export function Copiloto() {
                       </div>
                     )}
                     {item.charts?.map((chart) => <ChartCard key={chart.id} spec={chart} compact />)}
-                    {item.draft && <DraftCard draft={item.draft} />}
+                    {item.draft && <DraftCard draft={item.draft} resolved={item.resolved} />}
                     {item.navigate && !item.navigate.auto && (
                       <a className="copiloto-link" href={hrefFor(item.navigate)}>
                         Ver en {ROUTE_LABELS[item.navigate.route]} <ArrowRight size={13} />
@@ -332,7 +338,7 @@ export function Copiloto() {
   );
 }
 
-function DraftCard({ draft }: { draft: Draft }) {
+function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent }) {
   const [edits, setEdits] = useState<Record<string, string | boolean>>({});
   const [key, setKey] = useState(() => newId());
   const [state, setState] = useState<"idle" | "sending" | "done">("idle");
@@ -375,7 +381,7 @@ function DraftCard({ draft }: { draft: Draft }) {
     }
   }
 
-  const locked = state !== "idle";
+  const locked = state !== "idle" || !!resolved;
   const needsAck = draft.checks?.some((c) => c.status === "revisar") ?? false;
   const acknowledged = edits.acknowledged === true;
 
@@ -526,7 +532,11 @@ function DraftCard({ draft }: { draft: Draft }) {
 
       <div className="copiloto-draft-actions">
         <span className="copiloto-muted">Coherencia {Math.round(draft.coherence * 100)} %</span>
-        {state === "done" ? (
+        {resolved ? (
+          <span className={resolved.status === "confirmado" ? "copiloto-ok" : "copiloto-muted"}>
+            {resolved.status === "confirmado" ? <><Check size={14} /> Confirmado desde el chat</> : "Descartado"}
+          </span>
+        ) : state === "done" ? (
           <span className="copiloto-ok"><Check size={14} /> Hecho</span>
         ) : (
           <button type="button" className="primary-button" disabled={!draft.canConfirm || locked || (needsAck && !acknowledged)} onClick={() => void confirm()}>

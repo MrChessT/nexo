@@ -171,6 +171,12 @@ export type Draft =
       }>;
     });
 
+export interface ResolvedEvent {
+  draftId: string;
+  status: "confirmado" | "descartado";
+  message: string;
+}
+
 export interface ErrorEvent {
   code: string;
   message: string;
@@ -190,7 +196,7 @@ export type ConfirmResponse =
 
 export interface Suggestion {
   id: string;
-  kind: "stock_bajo" | "traspaso_pendiente" | "desvio_inventario" | "subida_precio";
+  kind: "stock_bajo" | "traspaso_pendiente" | "desvio_inventario" | "subida_precio" | "pedido_pendiente" | "inventario_pendiente";
   urgency: "baja" | "media" | "alta" | "critica";
   text: string;
   action?: NavigateEvent;

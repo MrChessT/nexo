@@ -22,14 +22,22 @@ import type { DraftBuilder } from "../drafts/builder";
 import type { DraftStore } from "../drafts/store";
 import type { DecisionReport, Evaluation, ReportOutcome } from "./report";
 import { buildRouting, type RoutingMeta } from "./routing";
-import type { PendingClarify, Session, SessionStore } from "./session";
+import { activeFocus, type Focus, type PendingClarify, type Session, type SessionStore } from "./session";
+import { HabitsStore } from "./habits";
+import type { Draft } from "../contract/index";
+import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
+
+/** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
+export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
 
 export interface RequestScope {
   tools?: Tools;
   audit?: AuditSink;
   sessions?: SessionStore;
   drafts?: DraftStore;
+  confirmDraft?: ConfirmDraft;
+  habits?: HabitsStore;
 }
 
 export interface AgentDeps {
@@ -45,6 +53,10 @@ export interface AgentDeps {
   selfConsistency: boolean;
   drafts: DraftStore;
   builder: DraftBuilder;
+  /** Confirmación por chat en desarrollo y tests (en producción llega por petición). */
+  confirmDraft?: ConfirmDraft;
+  /** Hábitos del usuario (en producción, con Supabase por petición). */
+  habits?: HabitsStore;
   now?: () => Date;
 }
 
@@ -59,9 +71,11 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_pending_transfers: "/traspasos",
   query_count_variance: "/informes",
   query_reorder: "/informes",
+  query_orders: "/pedidos",
+  query_spend: "/recepciones",
 };
 
-const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana" };
+const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
 
 function errorEvent(err: unknown): ErrorEvent {
   if (err instanceof JevError) {
@@ -94,10 +108,12 @@ export class Agent {
       audit: scope.audit ?? this.deps.audit,
       sessions: scope.sessions ?? this.deps.sessions,
       drafts: scope.drafts ?? this.deps.drafts,
+      confirmDraft: scope.confirmDraft ?? this.deps.confirmDraft,
+      habits: scope.habits ?? this.deps.habits ?? new HabitsStore(),
     };
     const timer = new StageTimer();
     const messageId = randomUUID();
-    const session = await deps.sessions.get(req.sessionId, ctx.userId);
+    const [session, habits] = await Promise.all([deps.sessions.get(req.sessionId, ctx.userId), deps.habits.get(ctx.orgId, ctx.userId)]);
     deps.metrics.messages += 1;
 
     try {
@@ -144,12 +160,12 @@ export class Agent {
       } else {
         if (!routing) {
           const built = await timer.time("entidades", () =>
-            buildRouting(message, page, pageContext?.locationId, session.turns, ctx, deps.retriever, deps.selfConsistency),
+            buildRouting(message, page, pageContext?.locationId, session.turns, ctx, deps.retriever, deps.selfConsistency, activeFocus(session, this.now().getTime())?.draftTitle),
           );
           const jev = await timer.time("jev1", () => deps.jev.evaluate(built.state as unknown as EntryType, built.questions));
           routing = { meta: built.meta, jev };
         }
-        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId).run();
+        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId, activeFocus(session, this.now().getTime()), habits).run();
         intent = interpretation.intent;
         decisions = interpretation.decisions;
         plan = interpretation.plan;
@@ -164,7 +180,7 @@ export class Agent {
         data: { messageId, intent: intentDecision, decisions: decisions.filter((d) => d.id !== "intent"), shortcut },
       });
 
-      const outcome = await this.execute(plan, { message, messageId, page, pageContext, overrides, routing, ctx, session, emit, timer, tools: toolset, decisions, audit: deps.audit, drafts: deps.drafts });
+      const outcome = await this.execute(plan, { message, messageId, page, pageContext, overrides, routing, ctx, session, emit, timer, tools: toolset, decisions, audit: deps.audit, drafts: deps.drafts, confirmDraft: deps.confirmDraft });
 
       const report: DecisionReport = {
         version: 1,
@@ -175,6 +191,13 @@ export class Agent {
         decisions,
         outcome,
       };
+
+      const previousFocus = session.focus;
+      session.focus = nextFocus(plan, outcome, previousFocus, this.now().getTime());
+      // Se aprende de lo que el usuario consulta o propone (locales y productos concretos).
+      if (session.focus && session.focus !== previousFocus && (outcome.kind === "consulta" || outcome.kind === "borrador")) {
+        await deps.habits.record(ctx.orgId, ctx.userId, { locationIds: session.focus.locationIds, productIds: session.focus.productIds }).catch(() => undefined);
+      }
 
       const written = await timer.time("redaccion", () => deps.writer.write(report, emit));
       deps.sessions.addTurn(session, { role: "user", text: message });
@@ -290,6 +313,39 @@ export class Agent {
     return { kind: "borrador", draft };
   }
 
+  /**
+   * «Sí, adelante» / «cancélalo» sobre el borrador pendiente. Confirmar pasa por el mismo servicio
+   * que el botón (dueño, caducidad, rol, idempotencia). Con avisos en «revisar» no se confirma por
+   * chat: hay que marcarlos en la tarjeta.
+   */
+  private async answerDraft(plan: Extract<Plan, { type: "borrador" }>, env: ExecEnv): Promise<ReportOutcome> {
+    const stored = await env.drafts.get(plan.draftId, env.ctx.userId, env.ctx.orgId);
+    if (!stored || stored.status !== "pendiente" || new Date(stored.draft.expiresAt).getTime() < this.now().getTime()) {
+      return { kind: "error", message: "Ese borrador ya no está disponible (se confirmó, se descartó o caducó). Pídemelo de nuevo." };
+    }
+    const title = stored.draft.title;
+    const resolved = async (status: "confirmado" | "descartado", message: string): Promise<ReportOutcome> => {
+      await env.emit({ event: "resolved", data: { draftId: plan.draftId, status, message } });
+      return { kind: "resuelto", status, message };
+    };
+
+    if (plan.action === "cancelar") {
+      // Se bloquea en el servidor para que la tarjeta antigua ya no pueda confirmarlo.
+      await env.drafts.claim(plan.draftId);
+      env.drafts.delete(plan.draftId);
+      return resolved("descartado", `Descartado: ${title}.`);
+    }
+
+    if (stored.draft.checks?.some((c) => c.status === "revisar")) {
+      return { kind: "error", message: "Ese borrador tiene avisos que revisar: márcalos en la tarjeta y confírmalo desde allí." };
+    }
+    if (!env.confirmDraft) return { kind: "error", message: "Confírmalo con el botón de la tarjeta." };
+    const result = await env.confirmDraft(plan.draftId);
+    if (!result.ok) return { kind: "error", message: result.message };
+    if (result.navigate) await env.emit({ event: "navigate", data: result.navigate });
+    return resolved("confirmado", result.message);
+  }
+
   private async execute(plan: Plan, env: ExecEnv): Promise<ReportOutcome> {
     const { ctx, emit } = env;
     switch (plan.type) {
@@ -309,6 +365,8 @@ export class Agent {
       case "accion":
       case "catalogo":
         return this.draft(plan, env);
+      case "borrador":
+        return this.answerDraft(plan, env);
       case "consultar":
         return this.query(plan, env.message, ctx, emit, env.timer, env.tools);
     }
@@ -333,6 +391,7 @@ export class Agent {
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
     const notices: string[] = [];
+    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
     if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
       notices.push("No has indicado local: he consultado todos los tuyos.");
     }
@@ -421,6 +480,7 @@ interface ExecEnv {
   decisions: Decision[];
   audit: AuditSink;
   drafts: DraftStore;
+  confirmDraft?: ConfirmDraft;
 }
 
 function overrideKey(pending: PendingClarify, option: string): string {
@@ -436,4 +496,48 @@ function overrideValue(option: string): string {
 
 function daysInclusive(from: string, to: string): number {
   return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
+}
+
+/** Productos y locales que menciona un borrador (para heredarlos en el siguiente mensaje). */
+function draftRefs(draft: Draft): { locationIds: string[]; productIds: string[] } {
+  const d = draft as unknown as Record<string, unknown>;
+  const locationIds = [d.locationId, d.fromLocationId].filter((v): v is string => typeof v === "string");
+  const lines = (Array.isArray(d.lines) ? d.lines : Array.isArray(d.orders) ? (d.orders as Array<{ lines: unknown[] }>).flatMap((o) => o.lines) : []) as Array<{ productId?: string }>;
+  const productIds = [d.productId, ...lines.map((l) => l.productId)].filter((v): v is string => typeof v === "string");
+  return { locationIds, productIds: [...new Set(productIds)] };
+}
+
+/** Foco tras responder: lo consultado o propuesto. Aclaraciones y charla no lo cambian. */
+function nextFocus(plan: Plan, outcome: ReportOutcome, previous: Focus | undefined, now: number): Focus | undefined {
+  if (outcome.kind === "consulta" && plan.type === "consultar") {
+    return {
+      kind: "consulta",
+      tool: plan.tool,
+      locationIds: plan.locationsDefaulted ? [] : plan.locationIds,
+      productIds: plan.products.map((p) => p.product.id),
+      periodo: plan.periodo,
+      at: now,
+    };
+  }
+  if (outcome.kind === "resuelto") {
+    // El borrador ya no está pendiente; el tema sigue siendo lo que trataba.
+    if (!previous) return undefined;
+    const { draftId: _draftId, draftTitle: _draftTitle, ...rest } = previous;
+    void _draftId;
+    void _draftTitle;
+    return { ...rest, at: now };
+  }
+  if (outcome.kind === "borrador") {
+    return {
+      kind: "borrador",
+      accion: outcome.draft.kind,
+      ...draftRefs(outcome.draft),
+      periodo: "no_indicado",
+      draftId: outcome.draft.draftId,
+      draftTitle: outcome.draft.title,
+      at: now,
+    };
+  }
+  // Tras una aclaración, una navegación o una charla, lo anterior sigue siendo el tema.
+  return previous ? { ...previous, at: previous.at } : undefined;
 }

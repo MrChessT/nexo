@@ -29,6 +29,7 @@ export type ReportOutcome =
   | { kind: "fuera_de_ambito" }
   | { kind: "bloqueado" }
   | { kind: "borrador"; draft: Draft }
+  | { kind: "resuelto"; status: "confirmado" | "descartado"; message: string }
   | { kind: "error"; message: string };
 
 export interface DecisionReport {
