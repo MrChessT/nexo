@@ -1,0 +1,3 @@
+.real-bars { position: absolute; left: 14px; right: 14px; bottom: 14px; display: flex; align-items: flex-end; gap: 5px; height: 34px; }
+.real-bars i { flex: 1; min-height: 4px; border-radius: 3px 3px 0 0; background: #b7d9c4; }
+.real-bars i:last-child { background: #2e8064; }

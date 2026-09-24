@@ -26,7 +26,10 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // getClaims verifica la firma del JWT en local (claves asimétricas, JWKS en caché) y solo va al
+  // servidor de Auth si el proyecto usa claves simétricas: evita una petición de red por navegación.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ? data.claims : null;
   if (!user && !isPublic) return NextResponse.redirect(new URL("/login", request.url));
   if (user && request.nextUrl.pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
   return response;

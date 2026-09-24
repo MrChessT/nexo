@@ -19,6 +19,7 @@ import "./stock.css";
 
 type StockRow = {
   id: string;
+  locationId: string;
   name: string;
   category: string;
   quantity: string;
@@ -67,27 +68,28 @@ export default function StockPage() {
         setLoading(false);
         return;
       }
-    const { data: locationData, error: locationError } = await supabase
-      .from("locations")
-      .select("id, name")
-      .eq("active", true)
-      .order("name");
-
-    if (locationError) {
-      setError("No se pudieron cargar los locales.");
-      setLoading(false);
-      return;
-    }
-
-    const availableLocations = locationData as Location[];
-    setLocations(availableLocations);
     const selectedLocation = locationId === "all" ? "" : locationId || location;
-
     let stockQuery = supabase
       .from("v_stock_valuation")
       .select("location_id, product_id, product_name, category_name, base_unit, qty, stock_value, min_qty, below_min");
     if (selectedLocation) stockQuery = stockQuery.eq("location_id", selectedLocation);
-    const { data: stockData, error: stockError } = await stockQuery.order("product_name");
+
+    // Los locales solo se piden la primera vez y en paralelo con el stock.
+    const [locationResult, { data: stockData, error: stockError }] = await Promise.all([
+      locations.length === 0
+        ? supabase.from("locations").select("id, name").eq("active", true).order("name")
+        : Promise.resolve(null),
+      stockQuery.order("product_name"),
+    ]);
+
+    if (locationResult) {
+      if (locationResult.error) {
+        setError("No se pudieron cargar los locales.");
+        setLoading(false);
+        return;
+      }
+      setLocations(locationResult.data as Location[]);
+    }
 
     if (stockError) {
       setError("No se pudo cargar el stock del local seleccionado.");
@@ -99,12 +101,13 @@ export default function StockPage() {
     setRows(
       records.map((row) => ({
         id: row.product_id,
+        locationId: row.location_id,
         name: row.product_name,
         category: row.category_name ?? "Sin categoría",
         quantity: `${formatDecimal(row.qty, 2)} ${row.base_unit}`,
         value: formatCurrency(row.stock_value),
         minimum: formatDecimal(row.min_qty, 2),
-        status: row.below_min && row.qty <= 0 ? "critical" : row.below_min ? "low" : "ok",
+        status: row.qty < 0 || (row.below_min && row.qty <= 0) ? "critical" : row.below_min ? "low" : "ok",
       })),
     );
     const totalValue = records.reduce(
@@ -121,7 +124,13 @@ export default function StockPage() {
   }
 
   useEffect(() => {
-    void loadStock();
+    // Carga inicial; admite el filtro que llega desde el asistente: /stock?local=<id>
+    async function bootstrap() {
+      await Promise.resolve();
+      await loadStock(new URLSearchParams(window.location.search).get("local") ?? undefined);
+    }
+    void bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga única al montar
   }, []);
   const locationLabel = location === "all"
     ? "todos los locales"
@@ -218,7 +227,7 @@ export default function StockPage() {
               <span />
             </div>
             {!loading && !error && filtered.map((row) => (
-              <div className="stock-data-row" key={row.id}>
+              <div className="stock-data-row" key={`${row.id}-${row.locationId}`}>
                 <div className="stock-product">
                   <span className={`stock-thumb ${row.status}`} />
                   <span>

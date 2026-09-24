@@ -41,3 +41,31 @@ Los tests de `src/lib` cubren formulas sin conversiones de cantidades a `number`
 - El stock solo cambia mediante RPC y `stock_movements` es inmutable.
 - Las cantidades se guardan en unidad base y los decimales se calculan con `decimal.js`.
 - Los datos de prueba se importan al modelo canonico, nunca mediante tablas paralelas.
+
+## Asistente (Nexo Copiloto)
+
+El asistente de chat (Ctrl+K o botón «Asistente») y la página **Informes** forman parte de esta app: mismo repositorio y mismo despliegue.
+
+**Principio:** Jev (TypeSafe AI) decide → el código calcula con decimal.js y ejecuta con las RPC → una LLM opcional solo redacta. Si no hay LLM, responden plantillas.
+
+**Código**
+- `src/copiloto/`: el agente, solo en servidor.
+  - `jev/catalog.ts`: preguntas de Jev. `gates/thresholds.ts`: umbrales.
+  - `tools/` y `analytics/`: cálculos. `drafts/`: borradores y confirmación.
+  - `http.ts`: los endpoints.
+- `src/app/api/copiloto/[...ruta]/route.ts`: endpoints `chat` (SSE), `actions/confirm`, `suggestions`, `analytics` y `health`. Usan la sesión del usuario (cookies); todo va con su JWT y RLS, sin service role.
+- `src/components/copiloto/` (panel), `src/components/charts/` (gráficas SVG) y `src/app/informes/`.
+- `docs/copiloto/`: contrato, arquitectura, catálogo de preguntas y evaluación.
+
+**Base de datos**
+- La primera vez, ejecuta `supabase/INSTALAR_ASISTENTE_Y_CATALOGO.sql` en el SQL Editor de Supabase. Instala las migraciones 0005 (auditoría) y 0006 (borradores y sesiones del asistente) y el catálogo de Vivero 55 en el modelo de la app.
+- Se puede repetir sin error.
+
+**Variables**
+- En Vercel solo hacen falta `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Jev se autentica con el token OIDC del propio despliegue (Vercel AI Gateway), sin guardar claves.
+- En local, `npx vercel env pull .env.local` trae ese token.
+
+**Comprobaciones**
+- `npm.cmd test`: incluye los tests del asistente, con Jev y LLM simulados.
+- `npm.cmd run copiloto:eval`: 43 frases contra Jev real. Deja el resultado en la consola.
+- `/informes?vista=&local=&dias=` y `/stock?local=` aplican los filtros que envía el asistente.

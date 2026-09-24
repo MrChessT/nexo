@@ -3,3 +3,9 @@ node_modules
 out
 .env*
 !.env.example
+.vercel
+
+# Estado local de la CLI de Supabase y caché de TypeScript
+supabase/.temp/
+*.tsbuildinfo
+.claude/
