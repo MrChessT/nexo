@@ -39,6 +39,9 @@ const DEFAULTS = {
   plausible: { act: 0.65, ask: 0.35 },
   // Categoría y medida del producto nuevo: por debajo de act se deja sin categoría / se pide revisar.
   categoria: { act: 0.6, ask: 0.35 },
+  // Continuación de la conversación (noul, "sí" es heredar): ≥ act → se hereda lo que falte.
+  // Medido con Jev real: continuaciones 0,80-0,91; preguntas nuevas tras la misma charla 0,37-0,54.
+  seguimiento: { act: 0.65, ask: 0.65 },
   // Autoconsistencia: probabilidad mínima de que intent_alt coincida con intent.
   consistencia: { act: 0.5, ask: 0.5 },
 } satisfies Record<string, GateSpec>;

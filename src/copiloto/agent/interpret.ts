@@ -22,6 +22,7 @@ import {
 import type { JevAnswer } from "../jev/client";
 import type { ToolName } from "../tools/tools";
 import type { RoutingMeta } from "./routing";
+import type { Focus } from "./session";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
 
 export interface ClarifyPlan {
@@ -51,6 +52,8 @@ export interface QueryPlan {
   areaId: string | null;
   products: ResolvedProduct[];
   periodo: Periodo;
+  /** Lo heredado del mensaje anterior, para decírselo al usuario ("Barceló", "Parador"…). */
+  inherited?: string[];
 }
 
 export interface NavigatePlan {
@@ -132,7 +135,20 @@ export class Interpreter {
     private readonly thresholds: Thresholds,
     private readonly overrides: Record<string, string>,
     private readonly pageLocationId: string | undefined,
+    /** Foco vigente de la conversación (si lo hay). */
+    private readonly focus?: Focus,
   ) {}
+
+  /** ¿El mensaje continúa el anterior? Solo si hay foco y Jev lo ve con seguridad suficiente. */
+  private followsUp(): boolean {
+    if (!this.focus) return false;
+    const answer = asNoul(this.answers.seguimiento);
+    if (!answer || answer.noul < this.thresholds.seguimiento.act) return false;
+    if (!this.decisions.some((d) => d.id === "seguimiento")) {
+      this.decisions.push({ id: "seguimiento", label: "Conversación", value: "continua", valueLabel: "Continúa lo anterior", probability: answer.noul, confidence: null, gate: "actuar" });
+    }
+    return true;
+  }
 
   private choice(id: string): ChoiceResponse | undefined {
     const answer = asChoice(this.answers[id]);
@@ -323,16 +339,42 @@ export class Interpreter {
   private query(intent: "consultar" | "pedir_sugerencias"): Plan {
     const g = this.gate("herramienta", "Consulta", this.thresholds.herramienta);
     let tool: Herramienta = g?.choice as Herramienta;
+    const inherited: string[] = [];
+    const focusTool = this.focus?.kind === "consulta" ? (this.focus.tool as Herramienta | undefined) : undefined;
     if (intent === "pedir_sugerencias" && (!g || tool === "ninguna" || g.outcome !== "actuar")) {
       tool = "query_reorder";
     } else if (!g || tool === "ninguna" || g.outcome !== "actuar") {
-      return this.clarify("herramienta", "¿Qué quieres consultar?", g?.ranked ?? [], ["ninguna"]);
+      // «¿y en el Vivero?»: sin consulta clara, la misma que antes.
+      if (!focusTool || !this.followsUp()) return this.clarify("herramienta", "¿Qué quieres consultar?", g?.ranked ?? [], ["ninguna"]);
+      tool = focusTool;
     }
     const loc = this.readLocation(this.thresholds.local_consulta);
     const area = this.readArea(this.thresholds.local_consulta);
-    const products = this.resolveProducts(this.thresholds.producto_consulta, false);
+    let products = this.resolveProducts(this.thresholds.producto_consulta, false);
     if ("type" in products) return products;
-    const periodo = (this.choice("periodo")?.choice ?? NO_INDICADO) as Periodo;
+    let periodo = (this.choice("periodo")?.choice ?? NO_INDICADO) as Periodo;
+
+    // Lo que este mensaje no dice se toma del anterior, si lo continúa.
+    const focus = this.focus;
+    if (focus && (products.length === 0 || loc.defaulted || periodo === NO_INDICADO) && this.followsUp()) {
+      if (products.length === 0 && focus.productIds.length > 0) {
+        products = focus.productIds
+          .map((id) => this.ctx.products.find((p) => p.id === id))
+          .filter((p): p is Product => !!p)
+          .map((product) => ({ product, segmentIndex: -1, amount: null, unit: null, price: null, quantityOutcome: null }));
+        if (products.length > 0) inherited.push(products.length === 1 ? products[0]!.product.name : `${products.length} productos`);
+      }
+      const focusLocations = focus.locationIds.filter((id) => this.ctx.locations.some((l) => l.id === id));
+      if (loc.defaulted && focusLocations.length > 0) {
+        loc.ids = focusLocations;
+        loc.defaulted = false;
+        inherited.push(focusLocations.map((id) => locationLabel(this.ctx, id)).join(", "));
+      }
+      if (periodo === NO_INDICADO && focus.periodo && focus.periodo !== NO_INDICADO) {
+        periodo = focus.periodo as Periodo;
+        inherited.push(label(periodo).toLowerCase());
+      }
+    }
     if (periodo !== NO_INDICADO) {
       const p = this.choice("periodo")!;
       this.decisions.push({ id: "periodo", label: "Periodo", value: periodo, valueLabel: label(periodo), probability: (p.probabilities as Record<string, number>)[periodo] ?? 0, confidence: p.confidence, gate: "actuar" });
@@ -347,6 +389,7 @@ export class Interpreter {
       areaId,
       products,
       periodo,
+      ...(inherited.length > 0 ? { inherited } : {}),
     };
   }
 

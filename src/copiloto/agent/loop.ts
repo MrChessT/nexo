@@ -22,7 +22,8 @@ import type { DraftBuilder } from "../drafts/builder";
 import type { DraftStore } from "../drafts/store";
 import type { DecisionReport, Evaluation, ReportOutcome } from "./report";
 import { buildRouting, type RoutingMeta } from "./routing";
-import type { PendingClarify, Session, SessionStore } from "./session";
+import { activeFocus, type Focus, type PendingClarify, type Session, type SessionStore } from "./session";
+import type { Draft } from "../contract/index";
 import { isShortcut, resolveShortcut } from "./shortcuts";
 
 export interface RequestScope {
@@ -149,7 +150,7 @@ export class Agent {
           const jev = await timer.time("jev1", () => deps.jev.evaluate(built.state as unknown as EntryType, built.questions));
           routing = { meta: built.meta, jev };
         }
-        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId).run();
+        const interpretation = new Interpreter(routing.jev.answers, routing.meta, ctx, deps.thresholds, overrides, pageContext?.locationId, activeFocus(session, this.now().getTime())).run();
         intent = interpretation.intent;
         decisions = interpretation.decisions;
         plan = interpretation.plan;
@@ -175,6 +176,8 @@ export class Agent {
         decisions,
         outcome,
       };
+
+      session.focus = nextFocus(plan, outcome, session.focus, this.now().getTime());
 
       const written = await timer.time("redaccion", () => deps.writer.write(report, emit));
       deps.sessions.addTurn(session, { role: "user", text: message });
@@ -333,6 +336,7 @@ export class Agent {
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
     const notices: string[] = [];
+    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
     if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
       notices.push("No has indicado local: he consultado todos los tuyos.");
     }
@@ -436,4 +440,40 @@ function overrideValue(option: string): string {
 
 function daysInclusive(from: string, to: string): number {
   return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
+}
+
+/** Productos y locales que menciona un borrador (para heredarlos en el siguiente mensaje). */
+function draftRefs(draft: Draft): { locationIds: string[]; productIds: string[] } {
+  const d = draft as unknown as Record<string, unknown>;
+  const locationIds = [d.locationId, d.fromLocationId].filter((v): v is string => typeof v === "string");
+  const lines = (Array.isArray(d.lines) ? d.lines : Array.isArray(d.orders) ? (d.orders as Array<{ lines: unknown[] }>).flatMap((o) => o.lines) : []) as Array<{ productId?: string }>;
+  const productIds = [d.productId, ...lines.map((l) => l.productId)].filter((v): v is string => typeof v === "string");
+  return { locationIds, productIds: [...new Set(productIds)] };
+}
+
+/** Foco tras responder: lo consultado o propuesto. Aclaraciones y charla no lo cambian. */
+function nextFocus(plan: Plan, outcome: ReportOutcome, previous: Focus | undefined, now: number): Focus | undefined {
+  if (outcome.kind === "consulta" && plan.type === "consultar") {
+    return {
+      kind: "consulta",
+      tool: plan.tool,
+      locationIds: plan.locationsDefaulted ? [] : plan.locationIds,
+      productIds: plan.products.map((p) => p.product.id),
+      periodo: plan.periodo,
+      at: now,
+    };
+  }
+  if (outcome.kind === "borrador") {
+    return {
+      kind: "borrador",
+      accion: outcome.draft.kind,
+      ...draftRefs(outcome.draft),
+      periodo: "no_indicado",
+      draftId: outcome.draft.draftId,
+      draftTitle: outcome.draft.title,
+      at: now,
+    };
+  }
+  // Tras una aclaración, una navegación o una charla, lo anterior sigue siendo el tema.
+  return previous ? { ...previous, at: previous.at } : undefined;
 }
