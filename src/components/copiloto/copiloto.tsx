@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, Loader2, Se
 import { ChartCard } from "@/components/charts/charts";
 import Decimal from "decimal.js";
 import { decimalText, euros, parseDecimal } from "@/lib/format";
-import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion, TableEvent } from "./types";
+import type { ActionsEvent, AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion, TableEvent } from "./types";
 import "./copiloto.css";
 
 type Item =
@@ -24,6 +24,7 @@ type Item =
       resolved?: ResolvedEvent;
       charts?: ChartSpec[];
       table?: TableEvent;
+      actions?: ActionsEvent["actions"];
       error?: string;
     };
 
@@ -162,7 +163,7 @@ export function Copiloto() {
     setItems((prev) => prev.map((item) => (item.id === id && item.role === "assistant" ? { ...item, ...patch(item) } : item)));
   }
 
-  async function send(message: string, clarification?: { clarifyId: string; optionId: string; freeText?: string }) {
+  async function send(message: string, clarification?: { clarifyId: string; optionId: string; freeText?: string }, followUpId?: string) {
     if (busy || !message.trim()) return;
     sessionId.current ??= newId();
     const assistantId = newId();
@@ -175,7 +176,7 @@ export function Copiloto() {
       const res = await fetch("/api/copiloto/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionId.current, message, page: currentRoute(pathname), ...(clarification ? { clarification } : {}) }),
+        body: JSON.stringify({ sessionId: sessionId.current, message, page: currentRoute(pathname), ...(clarification ? { clarification } : {}), ...(followUpId ? { followUpId } : {}) }),
       });
       if (!res.ok || !res.body) {
         const error = (await res.json().catch(() => null)) as ErrorEvent | null;
@@ -215,6 +216,7 @@ export function Copiloto() {
             setItems((prev) => prev.map((item) => (item.role === "assistant" && item.draft?.draftId === r.draftId ? { ...item, resolved: r } : item)));
           } else if (event === "chart") update(assistantId, (item) => ({ charts: [...(item.charts ?? []), data as ChartSpec] }));
           else if (event === "table") update(assistantId, () => ({ table: data as TableEvent }));
+          else if (event === "actions") update(assistantId, () => ({ actions: (data as ActionsEvent).actions }));
           else if (event === "error") update(assistantId, () => ({ error: (data as ErrorEvent).message }));
           else if (event === "done") update(assistantId, () => ({ text: (data as DoneEvent).text, pending: false }));
         }
@@ -311,9 +313,10 @@ export function Copiloto() {
                   <div key={item.id} className="copiloto-msg user"><p>{item.text}</p></div>
                 ) : (
                   <div key={item.id} className="copiloto-msg assistant">
-                    {item.decision && <Understood decision={item.decision} />}
+                    {item.decision && <Understood decision={item.decision} asking={!!item.clarify} />}
                     {item.pending && !item.text && <p className="copiloto-muted"><Loader2 size={14} className="copiloto-spin" /> Pensando…</p>}
-                    {item.text && <p className="copiloto-text">{item.text}</p>}
+                    {/* Con borrador, la tarjeta ya lo dice todo: sin texto que la repita. */}
+                    {item.text && !(item.draft && !item.error) && <p className="copiloto-text">{item.text}</p>}
                     {item.error && <p className="copiloto-error"><AlertTriangle size={14} /> {item.error}</p>}
                     {item.clarify && item.clarify.options.length > 0 && (
                       <div className="copiloto-options">
@@ -332,6 +335,15 @@ export function Copiloto() {
                     {item.table && <TableCard table={item.table} />}
                     {item.charts?.map((chart) => <ChartCard key={chart.id} spec={chart} compact />)}
                     {item.draft && <DraftCard draft={item.draft} resolved={item.resolved} />}
+                    {item.actions && item.actions.length > 0 && (
+                      <div className="copiloto-actions">
+                        {item.actions.map((a) => (
+                          <button type="button" key={a.id} disabled={busy} onClick={() => void send(a.label, undefined, a.id)}>
+                            {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {item.navigate && !item.navigate.auto && (
                       <a className="copiloto-link" href={hrefFor(item.navigate)}>
                         Ver en {ROUTE_LABELS[item.navigate.route]} <ArrowRight size={13} />
@@ -588,7 +600,7 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
       )}
 
       <div className="copiloto-draft-actions">
-        <span className="copiloto-muted">Coherencia {Math.round(draft.coherence * 100)} %</span>
+        <span />
         {resolved ? (
           <span className={resolved.status === "confirmado" ? "copiloto-ok" : "copiloto-muted"}>
             {resolved.status === "confirmado" ? <><Check size={14} /> Confirmado desde el chat</> : "Descartado"}
@@ -635,21 +647,29 @@ function Checks({ checks }: { checks: DraftCheck[] }) {
   );
 }
 
-function Understood({ decision }: { decision: DecisionEvent }) {
+/**
+ * «Entendido: …» solo cuando el asistente pregunta (así se ve qué entendió y qué falta). En el resto,
+ * la respuesta ya lo dice: queda un «¿Por qué?» discreto con el detalle.
+ */
+function Understood({ decision, asking }: { decision: DecisionEvent; asking: boolean }) {
   const [open, setOpen] = useState(false);
   const parts = understood(decision);
-  const quiet = decision.intent.value === "conversar" || decision.intent.value === "fuera_de_ambito";
+  const quiet = decision.intent.value === "conversar" || decision.intent.value === "fuera_de_ambito" || decision.shortcut;
   if (quiet || parts.length === 0) return null;
   return (
-    <div className="copiloto-understood">
+    <div className={`copiloto-understood${asking ? "" : " compact"}`}>
       <p>
-        <span className="copiloto-understood-label">Entendido:</span>{" "}
-        {parts.map((p, i) => (
-          <span key={p.key}>
-            {i > 0 && " · "}
-            <span className={p.doubtful ? "dudoso" : undefined} title={p.doubtful ? "No estoy seguro: revísalo" : undefined}>{p.text}</span>
-          </span>
-        ))}
+        {asking && (
+          <>
+            <span className="copiloto-understood-label">Entendido:</span>{" "}
+            {parts.map((p, i) => (
+              <span key={p.key}>
+                {i > 0 && " · "}
+                <span className={p.doubtful ? "dudoso" : undefined} title={p.doubtful ? "No estoy seguro: revísalo" : undefined}>{p.text}</span>
+              </span>
+            ))}
+          </>
+        )}
         {!decision.shortcut && (
           <button type="button" className="copiloto-why" onClick={() => setOpen(!open)} aria-expanded={open}>
             {open ? "Ocultar" : "¿Por qué?"}

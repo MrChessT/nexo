@@ -19,6 +19,10 @@ function list(rows: ToolRow[], render: (row: ToolRow) => string, max = 5): strin
   return rows.slice(0, max).map((row) => `• ${render(row)}`).join("\n");
 }
 
+/** Orden de los tipos de movimiento en el resumen: primero lo que más se mira. */
+const MOVEMENT_ORDER = ["consumo", "compra", "merma", "traspaso enviado", "traspaso recibido", "ajuste de inventario", "ajuste manual", "apertura"];
+const MOVEMENT_PLURAL: Record<string, string> = { compra: "compras", merma: "mermas", "traspaso enviado": "traspasos enviados", "traspaso recibido": "traspasos recibidos", "ajuste de inventario": "ajustes de inventario", "ajuste manual": "ajustes manuales" };
+const movementRank = (tipo: string) => (MOVEMENT_ORDER.includes(tipo) ? MOVEMENT_ORDER.indexOf(tipo) : MOVEMENT_ORDER.length);
 const URGENCY_TEXT = { baja: "baja", media: "media", alta: "alta", critica: "crítica" } as const;
 
 function urgent(evaluations: Evaluation[]): Evaluation[] {
@@ -80,7 +84,7 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       query_orders: `No hay pedidos abiertos ${where}.`,
       query_spend: `No hay compras registradas ${where}.`,
       query_product: result.totals.producto
-        ? `${result.totals.producto} (${result.totals.categoria}). Formatos: ${result.totals.formatos}. Compra: ${result.totals.compra}. No está activo en ningún local.`
+        ? `${result.totals.producto} · ${result.totals.categoria}\nFormatos: ${result.totals.formatos}\nCompra: ${result.totals.compra}\nNo está activo en ningún local.`
         : "No encuentro ese producto en el catálogo.",
     };
     return `${empty[result.tool].replace(/\s+\./, ".")}`;
@@ -104,8 +108,15 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       if (result.count === 1) return `${head}${result.rows[0]!.bajo_minimo ? ` Está por debajo del mínimo (${result.rows[0]!.minimo}).` : ""}`;
       return `${head}\n${list(result.rows, (r) => `${r.producto} (${r.local}${r.espacio ? ` · ${r.espacio}` : ""}): ${r.cantidad}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`)}${more}`;
     }
-    case "query_movements":
-      return `Movimientos ${where}: ${result.totals.movimientos} registros.\n${list(result.rows, (r) => `${r.tipo} · ${r.producto}: ${r.cantidad} (${r.valor})`)}${more}`;
+    case "query_movements": {
+      // Lo que importa arriba es el dinero por tipo (consumo, compras, mermas…), no cuántos registros hay.
+      const byType = Object.entries(result.totals)
+        .filter(([k]) => k.startsWith("valor_"))
+        .map(([k, v]) => ({ tipo: k.slice(6).replace(/_/g, " "), valor: v }))
+        .sort((a, b) => movementRank(a.tipo) - movementRank(b.tipo));
+      const head = byType.length > 0 ? `${byType.map((t) => `${MOVEMENT_PLURAL[t.tipo] ?? t.tipo} ${t.valor}`).join(" · ")}.` : `${result.totals.movimientos} registros.`;
+      return `Movimientos ${where}: ${head[0]!.toUpperCase()}${head.slice(1)}\n${list(result.rows, (r) => `${r.tipo} · ${r.producto}: ${r.cantidad} (${r.valor})`)}${more}`;
+    }
     case "query_prices": {
       const rises = urgent(evaluations);
       const head = `Precios desde el ${result.totals.desde}: ${result.totals.subidas} subidas.`;
@@ -133,7 +144,8 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
     case "query_product": {
       const t = result.totals;
       const places = list(result.rows, (r) => `${r.local}: ${r.cantidad}${r.minimo ? ` (mínimo ${r.minimo})` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
-      return `${t.producto} (${t.categoria}). Formatos: ${t.formatos}. Compra: ${t.compra}. Stock total: ${t.total}.\n${places}`;
+      // Ficha en líneas cortas: se lee de un vistazo.
+      return `${t.producto} · ${t.categoria}\nFormatos: ${t.formatos}\nCompra: ${t.compra}\nStock total: ${t.total}\n${places}`;
     }
     case "query_spend":
       return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}`;

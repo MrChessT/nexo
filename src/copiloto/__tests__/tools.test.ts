@@ -55,6 +55,19 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     expect(r.evalItems[0]!.data).toMatchObject({ old_price: "84,00 €", new_price: "92,40 €", change_pct: "10 %" });
   });
 
+  it("precios de un producto concreto: el último conocido aunque sea anterior al periodo", async () => {
+    const tonic = PRODUCTS[4]!;
+    const period = pastPeriod("hoy", "2026-09-23", "", "semana");
+    const general = await tools.run("query_prices", { ...base, period }, ctx);
+    expect(general.rows).toHaveLength(0);
+    const r = await tools.run("query_prices", { ...base, period, productIds: [tonic.id] }, ctx);
+    expect(r.rows).toEqual([expect.objectContaining({ producto: tonic.name, precio_actual: "11,52 €", proveedor: "Bebidas del Sur" })]);
+    // Las subidas antiguas no se valoran como si fueran de hoy.
+    const rum = await tools.run("query_prices", { ...base, period, productIds: [PRODUCTS[0]!.id] }, ctx);
+    expect(rum.rows[0]).toMatchObject({ precio_actual: "92,40 €", precio_anterior: "84,00 €" });
+    expect(rum.evalItems).toHaveLength(0);
+  });
+
   it("desvíos de inventario ordenados por valor", async () => {
     const r = await tools.run("query_count_variance", base, ctx);
     expect(r.evalItems[0]!.data).toMatchObject({ product: "Ginebra Tanqueray 70 cl", diff: "-2 botellas", diff_pct: "-50 %", diff_value: "-34,00 €" });

@@ -30,6 +30,8 @@ import { isShortcut, resolveShortcut } from "./shortcuts";
 import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
 import { tokenize } from "../entities/normalize";
 import { tableFor } from "../writer/table";
+import { followUpsFor } from "./followups";
+import { fastStockPlan } from "./fast-path";
 
 /** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
 export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
@@ -60,6 +62,8 @@ export interface AgentDeps {
   confirmDraft?: ConfirmDraft;
   /** Hábitos del usuario (en producción, con Supabase por petición). */
   habits?: HabitsStore;
+  /** Vía rápida sin Jev para preguntas de stock puras (por defecto, activada). */
+  fastPath?: boolean;
   now?: () => Date;
 }
 
@@ -135,6 +139,14 @@ export class Agent {
       // Un borrador que ya se confirmó (con el botón), se descartó o caducó no espera respuesta.
       await this.dropStaleDraft(session, ctx, deps.drafts);
 
+      // Botón de seguimiento («Precios», «Consumo del mes»…): consulta ya resuelta, sin Jev.
+      const followUp = req.followUpId ? session.followUps?.find((f) => f.id === req.followUpId) : undefined;
+      if (followUp) {
+        plan = followUp.plan;
+        message = followUp.label;
+        shortcut = true;
+      }
+
       // Respuesta a una aclaración: se reutiliza la llamada nº 1 con la decisión forzada.
       const pending = req.clarification ? session.clarifies.get(req.clarification.clarifyId) : undefined;
       if (pending && req.clarification) {
@@ -176,13 +188,20 @@ export class Agent {
         shortcut = plan !== null;
       }
 
+      // Vía rápida: «¿cuántas cocas quedan en el Vivero?» sin llamar a Jev (solo lectura, solo si el
+      // mensaje no dice nada más). Con un borrador esperando respuesta decide Jev.
+      if (this.deps.fastPath !== false && !plan && !reuse && !req.clarification && !activeFocus(session, this.now().getTime())?.draftId) {
+        plan = await fastStockPlan(message, ctx, deps.retriever);
+        shortcut = plan !== null;
+      }
+
       let intent: Intent;
       let decisions: Decision[] = [];
       let routing: { meta: RoutingMeta; jev: JevResult } | undefined = reuse;
 
       if (plan) {
         deps.metrics.shortcuts += 1;
-        intent = plan.type === "navegar" ? "navegar" : plan.type === "conversar" ? "conversar" : "consultar";
+        intent = plan.type === "navegar" ? "navegar" : plan.type === "conversar" ? "conversar" : plan.type === "catalogo" ? "proponer_accion" : "consultar";
       } else {
         if (!routing) {
           const built = await timer.time("entidades", () =>
@@ -412,11 +431,11 @@ export class Agent {
       case "borrador":
         return this.answerDraft(plan, env);
       case "consultar":
-        return this.query(plan, env.message, ctx, emit, env.timer, env.tools);
+        return this.query(plan, env.message, ctx, emit, env.timer, env.tools, env.session);
     }
   }
 
-  private async query(plan: QueryPlan, message: string, ctx: SessionContext, emit: Emit, timer: StageTimer, tools: Tools): Promise<ReportOutcome> {
+  private async query(plan: QueryPlan, message: string, ctx: SessionContext, emit: Emit, timer: StageTimer, tools: Tools, session: Session): Promise<ReportOutcome> {
     const now = this.now();
     const tzLocation = ctx.locations.find((l) => l.id === plan.locationIds[0]);
     const today = businessDay(now, tzLocation?.timezone ?? "Europe/Madrid", tzLocation?.dayCutoff ?? "06:00");
@@ -435,14 +454,15 @@ export class Agent {
     };
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
+    // «En tus 4 locales» ya lo dice el titular: sin avisos que lo repitan.
     const notices: string[] = [];
-    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
-    if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
-      notices.push(plan.tool === "query_stock" ? "No has indicado local: te lo muestro de todos, desglosado por local." : "No has indicado local: miro todos los tuyos.");
-    }
+    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}.`);
 
-    const evaluations = await timer.time("jev2", () => this.evaluate(result.evalItems, message, h.label));
-    if (result.evalItems.length > 0 && evaluations === null) notices.push("No he podido valorar la urgencia; te muestro los datos tal cual.");
+    // Lo que ya se sabe sale ya: la tabla no espera a la valoración de Jev (llamada nº 2), y la gráfica
+    // se calcula a la vez que esa valoración.
+    const evaluated = result.evalItems.length > 0;
+    const table = tableFor(result, evaluated);
+    if (table) await emit({ event: "table", data: table });
 
     const scope = {
       locales: plan.locationIds.map((id) => locationLabel(ctx, id)),
@@ -451,23 +471,23 @@ export class Agent {
       periodo: plan.tool === "query_reorder" ? h.label : period?.label ?? null,
     };
 
-    // Gráfica calculada por el código (decimal.js) para acompañar la respuesta.
+    // Gráfica calculada por el código (decimal.js), solo si añade algo a la tabla: el stock y el gasto
+    // por proveedor serían las mismas cifras en barras (y así se ahorra su consulta).
     const days = period ? daysInclusive(period.from, period.to) : 30;
-    // Varias filas: tabla en el chat (el texto queda de titular).
-    const table = tableFor(result, (evaluations?.length ?? 0) > 0);
-    if (table) await emit({ event: "table", data: table });
-
-    // La gráfica solo si añade algo a la tabla: el stock y el gasto por proveedor serían las mismas
-    // cifras en barras (y así se ahorra la consulta de la gráfica).
-    const chart = table && CHART_REPEATS_TABLE.has(plan.tool) ? null : await timer
-      .time("herramientas", () =>
-        new Analytics(tools.source).chartForTool(
-          plan.tool,
-          { ctx, locationIds: plan.locationIds, productIds: plan.products.map((p) => p.product.id), days: Math.max(days, 7), now },
-          h.days,
-        ),
-      )
-      .catch(() => null);
+    const chartPromise =
+      table && CHART_REPEATS_TABLE.has(plan.tool)
+        ? Promise.resolve(null)
+        : timer
+            .time("herramientas", () =>
+              new Analytics(tools.source).chartForTool(
+                plan.tool,
+                { ctx, locationIds: plan.locationIds, productIds: plan.products.map((p) => p.product.id), days: Math.max(days, 7), now },
+                h.days,
+              ),
+            )
+            .catch(() => null);
+    const [evaluations, chart] = await Promise.all([timer.time("jev2", () => this.evaluate(result.evalItems, message, h.label)), chartPromise]);
+    if (evaluated && evaluations === null) notices.push("No he podido valorar la urgencia; te muestro los datos tal cual.");
     if (chart) await emit({ event: "chart", data: chart });
 
     const route = TOOL_ROUTE[plan.tool];
@@ -485,6 +505,13 @@ export class Agent {
         auto: false,
       },
     });
+
+    // Botones para seguir («Precios», «Consumo del mes», «Ficha»…): se ejecutan sin Jev.
+    const followUps = followUpsFor(plan, result.rows.some((r) => r.bajo_minimo === true)).map((f) => ({ ...f, id: randomUUID().slice(0, 12) }));
+    if (followUps.length > 0 && result.count > 0) {
+      this.deps.sessions.setFollowUps(session, followUps);
+      await emit({ event: "actions", data: { actions: followUps.map((f) => ({ id: f.id, label: f.label })) } });
+    }
 
     return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}) };
   }

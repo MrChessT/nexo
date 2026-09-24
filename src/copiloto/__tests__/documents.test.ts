@@ -66,7 +66,7 @@ describe("ficha de producto", () => {
     const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl" })]));
     const events = await run(agent, chat("¿a cuánto compramos el Barceló?"));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Ron Barceló Añejo 70 cl (Destilados). Formatos: Botella 70 cl · Caja 6 botellas. Compra: Caja 6 botellas a 92,40 € (Distribuciones Canarias).");
+    expect(text).toContain("Ron Barceló Añejo 70 cl · Destilados\nFormatos: Botella 70 cl · Caja 6 botellas\nCompra: Caja 6 botellas a 92,40 € (Distribuciones Canarias)");
     expect(find(events, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ local: "Parador", cantidad: "3 botellas", minimo: "4 botellas" })]));
     expect(find(events, "navigate")).toMatchObject({ route: "/productos" });
   });

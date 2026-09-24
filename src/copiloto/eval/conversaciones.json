@@ -350,7 +350,7 @@
         },
         "espera": {
           "consulta": true,
-          "texto": "desglosado por local"
+          "texto": "en tus 4 locales"
         }
       },
       {
@@ -385,7 +385,7 @@
         },
         "espera": {
           "consulta": true,
-          "texto": "Beefeater (Destilados para gamas)"
+          "texto": "Beefeater · Destilados para gamas"
         }
       }
     ]

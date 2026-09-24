@@ -15,7 +15,7 @@ describe("memoria de la conversación", () => {
 
     expect(find(events, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "seguimiento", valueLabel: "Continúa lo anterior" })]));
     expect(find(events, "navigate")).toMatchObject({ route: "/stock", filters: { locationId: VIVERO!.id, productId: BARCELO.id } });
-    expect(find(events, "done")!.text).toContain(`Sigo con ${BARCELO.name}, de lo que hablábamos.`);
+    expect(find(events, "done")!.text).toContain(`Sigo con ${BARCELO.name}.`);
     // Jev recibe la conversación para resolver la referencia.
     expect((jev.calls[1]!.state as { recent_turns: unknown[] }).recent_turns).toHaveLength(2);
   });

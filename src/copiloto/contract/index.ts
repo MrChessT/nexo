@@ -44,8 +44,15 @@ export const ChatRequest = z.object({
       freeText: z.string().max(300).optional(),
     })
     .optional(),
+  /** Botón de seguimiento de una respuesta anterior (se ejecuta sin volver a llamar a Jev). */
+  followUpId: z.string().min(1).max(64).optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
+
+/** Botones para seguir desde una respuesta: «Precios», «Consumo del mes», «Ficha»… */
+export interface ActionsEvent {
+  actions: Array<{ id: string; label: string }>;
+}
 
 export interface DecisionEvent {
   messageId: string;
@@ -433,6 +440,7 @@ export type SseEvent =
   | { event: "draft"; data: Draft }
   | { event: "chart"; data: ChartSpec }
   | { event: "table"; data: TableEvent }
+  | { event: "actions"; data: ActionsEvent }
   | { event: "clarify"; data: ClarifyEvent }
   | { event: "resolved"; data: ResolvedEvent }
   | { event: "error"; data: ErrorEvent }
