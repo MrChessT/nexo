@@ -62,3 +62,25 @@
 {"message":"¿hay algún pedido retrasado?","intent":"consultar","herramienta":"query_orders"}
 {"message":"¿cuánto he gastado este mes en compras?","intent":"consultar","herramienta":"query_spend"}
 {"message":"¿cuánto le he comprado a Bebidas del Sur?","intent":"consultar","herramienta":"query_spend"}
+{"message":"ha llegado el traspaso del Parador","intent":"proponer_accion","tipo_accion":"recibir_traspaso"}
+{"message":"ya tenemos aquí lo que mandó Pickels, dale entrada","intent":"proponer_accion","tipo_accion":"recibir_traspaso"}
+{"message":"cancela el traspaso al Vivero","intent":"proponer_accion","tipo_accion":"cancelar_traspaso"}
+{"message":"anula el envío que hicimos a La Oliva","intent":"proponer_accion","tipo_accion":"cancelar_traspaso"}
+{"message":"manda el pedido de Bebidas del Sur","intent":"proponer_accion","tipo_accion":"enviar_pedido"}
+{"message":"envía ya el pedido de Makro al proveedor","intent":"proponer_accion","tipo_accion":"enviar_pedido"}
+{"message":"ha llegado el pedido de Distribuciones Canarias","intent":"proponer_accion","tipo_accion":"recibir_pedido"}
+{"message":"cancela el pedido de Makro","intent":"proponer_accion","tipo_accion":"cancelar_pedido"}
+{"message":"empieza el inventario del Parador","intent":"proponer_accion","tipo_accion":"abrir_inventario","local":"Parador"}
+{"message":"vamos a hacer recuento en el Vivero","intent":"proponer_accion","tipo_accion":"abrir_inventario","local":"Vivero"}
+{"message":"en la cámara del Vivero hay 3 botellas de Tanqueray","intent":"proponer_accion","tipo_accion":"anotar_conteo","local":"Vivero","producto":"Ginebra Tanqueray 70 cl"}
+{"message":"he contado 4 cajas de coca en la barra 1 del Parador","intent":"proponer_accion","tipo_accion":"anotar_conteo","local":"Parador","producto":"Coca-Cola 20 cl"}
+{"message":"ficha del Barceló","intent":"consultar","herramienta":"query_product","producto":"Ron Barceló Añejo 70 cl"}
+{"message":"¿en qué formatos compramos la tónica?","intent":"consultar","herramienta":"query_product","producto":"Tónica Schweppes 20 cl"}
+{"message":"¿qué proveedor nos trae el agua solán?","intent":"consultar","herramienta":"query_product","producto":"Agua Solán de Cabras 50 cl"}
+{"message":"pasa tanqueray del Parador al Vivero","intent":"proponer_accion","tipo_accion":"traspaso","local":"Parador","local_destino":"Vivero","producto":"Ginebra Tanqueray 70 cl","aclarar":true}
+{"message":"haz un traspaso de hielo a Pickels","intent":"proponer_accion","tipo_accion":"traspaso","local_destino":"Pickels","producto":"Hielo en cubitos","aclarar":true}
+{"message":"se ha roto tanqueray en el Vivero","intent":"proponer_accion","tipo_accion":"merma","local":"Vivero","producto":"Ginebra Tanqueray 70 cl","aclarar":true}
+{"message":"cuantas cajas de cocacola hay","intent":"consultar","herramienta":"query_stock","producto":"Coca-Cola 20 cl"}
+{"message":"oye y de agua como vamos en la oliva","intent":"consultar","herramienta":"query_stock","local":"La Oliva","producto":"Agua Solán de Cabras 50 cl"}
+{"message":"queda hielo?","intent":"consultar","herramienta":"query_stock","producto":"Hielo en cubitos"}
+{"message":"¿cuánta coca se ha gastado este mes en el Vivero?","intent":"consultar","herramienta":"query_movements","local":"Vivero","periodo":"mes","producto":"Coca-Cola 20 cl"}

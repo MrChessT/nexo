@@ -1,12 +1,15 @@
 // Evaluación del enrutado contra Jev REAL (no usa caché). Uso:
-//   npm run eval                 → todas las frases de eval/frases.jsonl
-//   npm run eval -- --only 5     → las 5 primeras
-// Escribe el resumen en consola y en eval/resultados.md.
+//   npm run copiloto:eval                  → todas las frases de eval/frases.jsonl
+//   npm run copiloto:eval -- --only 5      → las 5 primeras
+//   npm run copiloto:eval -- --replay      → sin Jev: repite la última evaluación con las respuestas
+//                                            guardadas (para probar umbrales: GATE_<DECISION>_ACT=…)
+// Escribe el resumen en consola y en docs/copiloto/EVALUACION.md, y las respuestas de Jev tal cual en
+// docs/copiloto/eval-respuestas.json (sin claves ni datos privados: solo frases de prueba y probabilidades).
 import { getVercelOidcToken } from "@vercel/oidc";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EntryType } from "@typesafe-ai/sdk";
-import { CATALOG_ACCIONES, Interpreter, type Plan } from "../agent/interpret";
+import { CATALOG_ACCIONES, DOCUMENT_ACCIONES, Interpreter, type Plan } from "../agent/interpret";
 import { buildRouting } from "../agent/routing";
 import { LruCache } from "../cache/lru";
 import { loadConfig } from "../config";
@@ -15,7 +18,7 @@ import { LexicalRetriever } from "../entities/retriever";
 import { asChoice, asNoul } from "../gates/gate";
 import { loadThresholds } from "../gates/thresholds";
 import { CATALOG_VERSION } from "../jev/catalog";
-import { JevClient, type JevResult } from "../jev/client";
+import { JevClient, type JevAnswer, type JevResult } from "../jev/client";
 import { Metrics } from "../metrics/metrics";
 
 interface Case {
@@ -66,8 +69,23 @@ const cases: Case[] = readFileSync(join(process.cwd(), "src/copiloto/eval/frases
   .slice(from)
   .slice(0, only);
 
+const replay = args.includes("--replay");
+const RAW_PATH = join(process.cwd(), "docs/copiloto/eval-respuestas.json");
+interface RawRow {
+  message: string;
+  ms: number;
+  answers: Record<string, JevAnswer>;
+}
+interface RawFile {
+  catalog: string;
+  model: string;
+  date: string;
+  rows: RawRow[];
+}
+const saved: RawFile | null = replay ? (JSON.parse(readFileSync(RAW_PATH, "utf8")) as RawFile) : null;
+
 const config = loadConfig();
-if (!config.jev.apiKey && !config.jev.oidc) throw new Error("Falta TYPESAFE_API_KEY, AI_GATEWAY_API_KEY o VERCEL_OIDC_TOKEN en .env.local");
+if (!replay && !config.jev.apiKey && !config.jev.oidc) throw new Error("Falta TYPESAFE_API_KEY, AI_GATEWAY_API_KEY o VERCEL_OIDC_TOKEN en .env.local");
 const metrics = new Metrics(config.JEV_PRICE_PER_MTOK_USD);
 const jev = new JevClient({
   apiKey: config.jev.oidc ? () => getVercelOidcToken() : config.jev.apiKey,
@@ -89,11 +107,23 @@ interface Row {
   plan: Plan["type"];
   verdict: "correcto" | "pregunta" | "error_peligroso" | "error";
   detail: string;
+  raw: RawRow;
 }
 
 async function evaluate(c: Case): Promise<Row> {
   const built = await buildRouting(c.message, "/", undefined, [], ctx, retriever, config.JEV_SELF_CONSISTENCY);
-  const result = await jev.evaluate(built.state as unknown as EntryType, built.questions);
+  let result: Pick<JevResult, "answers">;
+  let ms: number;
+  if (saved) {
+    const previous = saved.rows.find((r) => r.message === c.message);
+    if (!previous) throw new Error(`Sin respuesta guardada para «${c.message}»: vuelve a evaluar con Jev`);
+    result = previous;
+    ms = previous.ms;
+  } else {
+    const started = Date.now();
+    result = await jev.evaluate(built.state as unknown as EntryType, built.questions);
+    ms = Date.now() - started;
+  }
   const answers: Row["answers"] = {};
   for (const field of FIELDS) {
     const label = c[field];
@@ -106,8 +136,9 @@ async function evaluate(c: Case): Promise<Row> {
 
   const plan = new Interpreter(result.answers, built.meta, ctx, thresholds, {}, undefined).run().plan;
   const catalog = (CATALOG_ACCIONES as readonly string[]).includes(c.tipo_accion ?? "");
-  const expected = c.inyeccion ? "bloqueado" : catalog ? "catalogo" : EXPECTED_PLAN[c.intent]!;
-  const writes = plan.type === "accion" || plan.type === "catalogo";
+  const documento = (DOCUMENT_ACCIONES as readonly string[]).includes(c.tipo_accion ?? "");
+  const expected = c.inyeccion ? "bloqueado" : catalog ? "catalogo" : documento ? "documento" : EXPECTED_PLAN[c.intent]!;
+  const writes = plan.type === "accion" || plan.type === "catalogo" || plan.type === "documento";
   const wrongFields = Object.entries(answers).filter(([, a]) => !a.ok).map(([f, a]) => `${f}=${a.value}`);
   let verdict: Row["verdict"];
   if (c.aclarar) verdict = plan.type === "clarify" ? "correcto" : writes ? "error_peligroso" : "error";
@@ -115,7 +146,7 @@ async function evaluate(c: Case): Promise<Row> {
   else if (plan.type === expected && wrongFields.length === 0) verdict = "correcto";
   else verdict = writes ? "error_peligroso" : "error";
   const detail = plan.type === "clarify" ? `pregunta por ${plan.field}` : wrongFields.join(", ");
-  return { c, answers, plan: plan.type, verdict, detail };
+  return { c, answers, plan: plan.type, verdict, detail, raw: { message: c.message, ms, answers: result.answers } };
 }
 
 async function main() {
@@ -132,7 +163,16 @@ const out = (s = "") => lines.push(s);
 
 out(`# Resultados de evaluación`);
 out();
-out(`Catálogo ${CATALOG_VERSION} · modelo ${config.jev.model} (${config.jev.via}) · ${rows.length} frases · ${new Date().toISOString()}`);
+out(
+  saved
+    ? `Repetición sin Jev de la evaluación del ${saved.date} (catálogo ${saved.catalog}, modelo ${saved.model}) · ${rows.length} frases`
+    : `Catálogo ${CATALOG_VERSION} · modelo ${config.jev.model} (${config.jev.via}) · ${rows.length} frases · ${new Date().toISOString()}`,
+);
+if (saved && saved.catalog !== CATALOG_VERSION) out(`⚠ Las preguntas han cambiado desde entonces (catálogo ${CATALOG_VERSION}): hay que volver a evaluar con Jev.`);
+out();
+const times = rows.map((r) => r.raw.ms).sort((a, b) => a - b);
+const at = (q: number) => times[Math.min(times.length - 1, Math.floor(q * times.length))] ?? 0;
+out(`Latencia de la llamada nº 1: mediana ${at(0.5)} ms · p90 ${at(0.9)} ms · máxima ${times[times.length - 1] ?? 0} ms.`);
 out();
 out(`## Por mensaje`);
 out();
@@ -160,13 +200,21 @@ for (const field of [...FIELDS, "inyeccion"]) {
   out(`| ${field} | ${ok.length}/${got.length} (${pct(ok.length, got.length)}) | ${mean(ok)} | ${mean(bad)} |`);
 }
 out();
-out(`## Barrido de umbral para la intención`);
+out(`## Barrido de umbral por decisión`);
 out();
-out(`| Umbral act | Cobertura (actúa) | Precisión cuando actúa |`);
-out(`| --- | --- | --- |`);
-for (const t of [0.5, 0.6, 0.7, 0.8, 0.9]) {
-  const acted = rows.map((r) => r.answers.intent!).filter((a) => (a.confidence ?? 0) >= t);
-  out(`| ${t.toFixed(1)} | ${pct(acted.length, rows.length)} | ${pct(acted.filter((a) => a.ok).length, acted.length)} |`);
+out(`Con cada umbral: qué parte de las frases decidiría sin preguntar (cobertura) y cuántas de esas acertaría (precisión).`);
+out();
+const THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
+out(`| Decisión | ${THRESHOLDS.map((t) => t.toFixed(2)).join(" | ")} |`);
+out(`| --- | ${THRESHOLDS.map(() => "---").join(" | ")} |`);
+for (const field of ["intent", "herramienta", "tipo_accion", "local", "local_destino", "producto", "periodo"]) {
+  const got = rows.map((r) => r.answers[field]).filter((a): a is NonNullable<typeof a> => Boolean(a) && a!.confidence !== null);
+  if (got.length === 0) continue;
+  const cells = THRESHOLDS.map((t) => {
+    const acted = got.filter((a) => a.confidence! >= t);
+    return `${pct(acted.length, got.length)} · ${pct(acted.filter((a) => a.ok).length, acted.length)}`;
+  });
+  out(`| ${field} (${got.length}) | ${cells.join(" | ")} |`);
 }
 out();
 out(`## Detalle de lo que no fue «correcto»`);
@@ -176,10 +224,14 @@ out(`| --- | --- | --- | --- |`);
 for (const r of rows.filter((x) => x.verdict !== "correcto")) out(`| ${r.c.message} | ${r.verdict} | ${r.plan} | ${r.detail} |`);
 out();
 const snap = metrics.snapshot();
-out(`Coste Jev de esta evaluación: ${snap.jev.calls} llamadas, ${snap.jev.inputTokens} tokens de entrada, ~${snap.jev.estimatedCostUsd} $.`);
+if (!saved) out(`Coste Jev de esta evaluación: ${snap.jev.calls} llamadas, ${snap.jev.inputTokens} tokens de entrada, ~${snap.jev.estimatedCostUsd} $.`);
 
 const report = lines.join("\n");
 writeFileSync(join(process.cwd(), "docs/copiloto/EVALUACION.md"), `${report}\n`, "utf8");
+if (!saved) {
+  const raw: RawFile = { catalog: CATALOG_VERSION, model: config.jev.model, date: new Date().toISOString(), rows: rows.map((r) => r.raw) };
+  writeFileSync(RAW_PATH, `${JSON.stringify(raw, null, 1)}\n`, "utf8");
+}
 console.log(report);
 }
 
