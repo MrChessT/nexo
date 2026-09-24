@@ -36,3 +36,5 @@
   .orders-head, .orders-row { grid-template-columns: minmax(150px, 1.4fr) 110px; padding: 0 12px; }
   .orders-head span:nth-child(2), .orders-row > span:nth-child(2), .orders-head span:nth-child(3), .orders-row > span:nth-child(3), .orders-head span:nth-child(4), .orders-row > span:nth-child(4) { display: none; }
 }
+.page-notice { margin: 18px 0 0; padding: 10px 12px; color: #2d6a4f; background: #eaf6ec; border-radius: 8px; font-size: 12px; }
+.check-option { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 7px !important; padding: 8px 11px; border: 1px solid #dfe7e1; border-radius: 8px; font-weight: 600 !important; }

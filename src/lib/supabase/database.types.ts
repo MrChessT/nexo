@@ -41,34 +41,6 @@ export type Database = {
         Update: { packs_qty?: number; pack_price?: number | null };
         Relationships: [];
       };
-      invitations: {
-        Row: {
-          id: string;
-          org_id: string;
-          email: string;
-          role: "owner" | "admin" | "manager" | "staff";
-          all_locations: boolean;
-          location_ids: string[];
-          invited_by: string | null;
-          created_at: string;
-          accepted_at: string | null;
-        };
-        Insert: {
-          org_id: string;
-          email: string;
-          role?: "owner" | "admin" | "manager" | "staff";
-          all_locations?: boolean;
-          location_ids?: string[];
-        };
-        Update: Partial<Database["public"]["Tables"]["invitations"]["Insert"]>;
-        Relationships: [];
-      };
-      membership_locations: {
-        Row: { org_id: string; user_id: string; location_id: string };
-        Insert: { org_id: string; user_id: string; location_id: string };
-        Update: Partial<Database["public"]["Tables"]["membership_locations"]["Insert"]>;
-        Relationships: [];
-      };
       profiles: {
         Row: { user_id: string; full_name: string | null; created_at: string };
         Insert: { user_id: string; full_name?: string | null };
@@ -599,22 +571,6 @@ export type Database = {
       receive_order: {
         Args: { p_order: string; p_lines: Json; p_doc_number?: string | null; p_doc_date?: string; p_close?: boolean };
         Returns: string;
-      };
-      accept_invitations: {
-        Args: Record<string, never>;
-        Returns: number;
-      };
-      org_members: {
-        Args: { p_org: string };
-        Returns: Array<{
-          user_id: string;
-          email: string;
-          full_name: string | null;
-          role: "owner" | "admin" | "manager" | "staff";
-          all_locations: boolean;
-          location_ids: string[];
-          joined_at: string;
-        }>;
       };
       usage_by_business_day: {
         Args: { p_since: string; p_location?: string | null };

@@ -9,7 +9,6 @@ import { SuggestModal } from "./suggest-modal";
 import "../productos/productos.css";
 import "../productos/product-editor.css";
 import "../proveedores/proveedores.css";
-import "../equipo/equipo.css";
 import "./pedidos.css";
 
 // Pedidos a proveedor: borradores, enviados (pendientes de recibir), recibidos y cancelados.
@@ -105,7 +104,7 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {notice && <p className="team-notice">{notice}</p>}
+        {notice && <p className="page-notice">{notice}</p>}
 
         <div className="catalog-tabs">
           {(Object.keys(TAB_LABEL) as Tab[]).map((t) => (

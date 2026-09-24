@@ -22,7 +22,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   Truck,
-  Users,
   Warehouse,
   X,
   XCircle,
@@ -144,14 +143,6 @@ function storeLocation(id: string) {
 async function loadIdentity(supabase: BrowserClient): Promise<Identity | null> {
   const { data: session } = await supabase.auth.getSession();
   const user = session.session?.user;
-  // Primera entrada de alguien invitado: se une a su organización antes de cargar nada.
-  if (user) {
-    const { count } = await supabase.from("memberships").select("org_id", { count: "exact", head: true }).eq("user_id", user.id);
-    if (!count) {
-      const { data: accepted } = await supabase.rpc("accept_invitations");
-      if (!accepted) return null;
-    }
-  }
   const [profile, membership, locations] = await Promise.all([
     user ? supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle() : Promise.resolve({ data: null }),
     user ? supabase.from("memberships").select("role, organizations(name)").eq("user_id", user.id).limit(1).maybeSingle() : Promise.resolve({ data: null }),
@@ -159,6 +150,7 @@ async function loadIdentity(supabase: BrowserClient): Promise<Identity | null> {
   ]);
   const name = profile.data?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
   const member = membership.data as { role: string; organizations: { name: string } | null } | null;
+  if (user && !member) return null;
   return {
     name,
     initials: initialsOf(name),
@@ -306,7 +298,7 @@ export default function Dashboard() {
       }
       const loaded = await loadIdentity(supabase);
       if (!loaded) {
-        setError("Aún no perteneces a ninguna organización. Pide a un administrador que te invite con este email y vuelve a entrar.");
+        setError("Tu usuario aún no tiene acceso a ninguna organización. Pide a un administrador que te dé acceso.");
         setLoading(false);
         return;
       }
@@ -414,7 +406,6 @@ export default function Dashboard() {
         <nav className="main-nav">
           <Link className="nav-item" href="/productos"><Package size={18} /><span>Productos</span></Link>
           <Link className="nav-item" href="/proveedores"><Truck size={18} /><span>Proveedores</span></Link>
-          <Link className="nav-item" href="/equipo"><Users size={18} /><span>Equipo</span></Link>
           <Link className="nav-item" href={withLocal("/informes")}><SlidersHorizontal size={18} /><span>Informes</span></Link>
         </nav>
 

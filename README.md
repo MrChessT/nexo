@@ -53,9 +53,10 @@ Se aplican en orden. En el proyecto real se pegan en Supabase → SQL Editor; el
 | 0007 | Catálogo con filtros en servidor (`catalog_search`) |
 | 0008 | Rendimiento: RLS evaluada una vez por consulta, índices, `stock_summary` |
 | 0009 | Resumen filtrable por local y consumo con una sola definición |
-| 0010 | Equipo: invitaciones por email y protección de propietarios |
+| 0010 | (retirada: el apartado de Equipo se eliminó) |
 | 0011 | Consumo real por inventario (`close_count` con `p_as_consumption`, `count_preview`) |
 | 0012 | Pedidos a proveedor: borrador, envío, recepción parcial o total |
+| 0013 | Limpieza de lo que creaba la 0010, por si se llegó a aplicar |
 
 Las funciones de la app que dependen de una migración nueva degradan con un aviso si aún no está aplicada.
 

@@ -299,7 +299,7 @@ export function OrderEditor({
             {mode === "receive" && (
               <div className="editor-grid receive-extra">
                 <label>Nº de albarán<input value={docNumber} onChange={(event) => setDocNumber(event.target.value)} placeholder="Opcional" /></label>
-                <label className="location-option">
+                <label className="check-option">
                   <input type="checkbox" checked={closeOrder} onChange={(event) => setCloseOrder(event.target.checked)} /> Cerrar el pedido aunque falte algo
                 </label>
               </div>
