@@ -297,6 +297,7 @@ export class DraftBuilder {
         diff: diff.toString(),
         baseUnit: product?.baseUnit ?? "ud",
         diffValue: diffValue.toString(),
+        ...(product ? { expectedText: formatStock(expected, product), countedText: formatStock(qty, product), diffText: formatStock(diff, product) } : {}),
       });
     }
     const warnings = ["Los productos no contados se quedan como están (no se ponen a cero)."];

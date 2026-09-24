@@ -126,6 +126,16 @@ export interface ErrorEvent {
   retryable: boolean;
 }
 
+/** Resultado de una consulta con varias filas: el chat lo pinta como tabla (el texto queda de titular). */
+export interface TableEvent {
+  columns: Array<{ key: string; label: string; align?: "left" | "right" }>;
+  rows: Array<Record<string, string>>;
+  /** Filas que marcar (bajo mínimo, con retraso…), por índice. */
+  flagged?: number[];
+  /** Filas que no caben y se ven en la pantalla enlazada. */
+  more?: number;
+}
+
 export interface DoneEvent {
   messageId: string;
   text: string;
@@ -234,6 +244,10 @@ export interface CountCloseDraft extends DraftBase {
       diff: string;
       baseUnit: BaseUnit;
       diffValue: string;
+      /** Como se cuenta en barra («12 botellas», «2 cajas + 5 ud»), para mostrar. */
+      expectedText?: string;
+      countedText?: string;
+      diffText?: string;
     }>;
     totalDiffValue: string;
   };
@@ -389,6 +403,7 @@ export type SseEvent =
   | { event: "navigate"; data: NavigateEvent }
   | { event: "draft"; data: Draft }
   | { event: "chart"; data: ChartSpec }
+  | { event: "table"; data: TableEvent }
   | { event: "clarify"; data: ClarifyEvent }
   | { event: "resolved"; data: ResolvedEvent }
   | { event: "error"; data: ErrorEvent }

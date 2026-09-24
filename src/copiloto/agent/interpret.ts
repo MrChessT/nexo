@@ -27,6 +27,7 @@ import { preferredLocation, type Habits } from "./habits";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
 import { relevant, slotSpec, type ContextKey } from "../gates/policy";
 import { namesAll, namesProduct } from "../entities/mentions";
+import { formatDecimal } from "../entities/units";
 
 export interface ClarifyPlan {
   type: "clarify";
@@ -417,7 +418,7 @@ export class Interpreter {
       const typedAmount = this.overrides[`cantidad_${i}`];
       if (typedAmount !== undefined) {
         const typedUnit = this.overrides[`unidad_texto_${i}`] ?? null;
-        this.decisions.push({ id: `cantidad_ok_${i}`, label: "Cantidad", value: `${typedAmount} ${typedUnit ?? ""}`.trim(), valueLabel: `${typedAmount} ${typedUnit ?? ""}`.trim(), probability: 1, confidence: null, gate: "actuar" });
+        this.decisions.push({ id: `cantidad_ok_${i}`, label: "Cantidad", value: `${typedAmount} ${typedUnit ?? ""}`.trim(), valueLabel: amountLabel(typedAmount, typedUnit), probability: 1, confidence: null, gate: "actuar" });
         resolved.push({ product, segmentIndex: i, amount: typedAmount, unit: typedUnit, price: rs.segment.price, quantityOutcome: "actuar", productOutcome: g.outcome });
         continue;
       }
@@ -429,7 +430,7 @@ export class Interpreter {
           id: `cantidad_ok_${i}`,
           label: "Cantidad",
           value: `${rs.segment.amount} ${rs.segment.unit ?? ""}`.trim(),
-          valueLabel: `${rs.segment.amount} ${rs.segment.unit ?? ""}`.trim(),
+          valueLabel: amountLabel(rs.segment.amount, rs.segment.unit),
           probability: q.noul,
           confidence: null,
           gate: quantityOutcome,
@@ -657,6 +658,14 @@ export class Interpreter {
       ...(tooAmbiguous ? { reviewAll: true } : {}),
     };
   }
+}
+
+/** «2 botellas», «1 caja», «6 ud»: la cantidad del mensaje para enseñarla. */
+function amountLabel(amount: string, unit: string | null): string {
+  const n = formatDecimal(amount, 4);
+  if (!unit) return n;
+  const plural = amount !== "1" && !/^(ud|kg|g|l|cl|ml)$/.test(unit) ? (/[aeiou]$/.test(unit) ? `${unit}s` : `${unit}es`) : unit;
+  return `${n} ${plural}`;
 }
 
 export function locationLabel(ctx: SessionContext, id: string): string {

@@ -29,6 +29,7 @@ import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
 import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
 import { tokenize } from "../entities/normalize";
+import { tableFor } from "../writer/table";
 
 /** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
 export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
@@ -76,6 +77,9 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_orders: "/pedidos",
   query_spend: "/recepciones",
 };
+
+/** Consultas cuya gráfica repite la tabla. */
+const CHART_REPEATS_TABLE = new Set<ToolName>(["query_stock", "query_spend"]);
 
 const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
 
@@ -432,7 +436,7 @@ export class Agent {
     const notices: string[] = [];
     if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}, de lo que hablábamos.`);
     if (plan.locationsDefaulted && ctx.locations.length > 1 && plan.locationIds.length > 1) {
-      notices.push("No has indicado local: te lo muestro de todos, desglosado por local.");
+      notices.push(plan.tool === "query_stock" ? "No has indicado local: te lo muestro de todos, desglosado por local." : "No has indicado local: miro todos los tuyos.");
     }
 
     const evaluations = await timer.time("jev2", () => this.evaluate(result.evalItems, message, h.label));
@@ -447,7 +451,13 @@ export class Agent {
 
     // Gráfica calculada por el código (decimal.js) para acompañar la respuesta.
     const days = period ? daysInclusive(period.from, period.to) : 30;
-    const chart = await timer
+    // Varias filas: tabla en el chat (el texto queda de titular).
+    const table = tableFor(result, (evaluations?.length ?? 0) > 0);
+    if (table) await emit({ event: "table", data: table });
+
+    // La gráfica solo si añade algo a la tabla: el stock y el gasto por proveedor serían las mismas
+    // cifras en barras (y así se ahorra la consulta de la gráfica).
+    const chart = table && CHART_REPEATS_TABLE.has(plan.tool) ? null : await timer
       .time("herramientas", () =>
         new Analytics(tools.source).chartForTool(
           plan.tool,
@@ -474,7 +484,7 @@ export class Agent {
       },
     });
 
-    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices };
+    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}) };
   }
 
   /** Llamada nº 2: Jev juzga las cifras calculadas. Devuelve null si Jev falla (se degrada sin valoración). */

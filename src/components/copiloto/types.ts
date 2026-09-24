@@ -124,7 +124,7 @@ export type Draft =
       asConsumption: boolean;
       preview: {
         countedProducts: number;
-        adjustments: Array<{ productName: string; expected: string; counted: string; diff: string; baseUnit: string; diffValue: string }>;
+        adjustments: Array<{ productName: string; expected: string; counted: string; diff: string; baseUnit: string; diffValue: string; expectedText?: string; countedText?: string; diffText?: string }>;
         totalDiffValue: string;
       };
     })
@@ -159,6 +159,7 @@ export type Draft =
       oldValue: string | null;
       newValue: string;
       baseUnit: string;
+      input?: QuantityInput;
     })
   | (DraftBase & { kind: "archivar"; productName: string; stockQty: string; baseUnit: string })
   | (DraftBase & {
@@ -181,6 +182,13 @@ export interface ErrorEvent {
   code: string;
   message: string;
   retryable: boolean;
+}
+
+export interface TableEvent {
+  columns: Array<{ key: string; label: string; align?: "left" | "right" }>;
+  rows: Array<Record<string, string>>;
+  flagged?: number[];
+  more?: number;
 }
 
 export interface DoneEvent {

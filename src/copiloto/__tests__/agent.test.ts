@@ -127,9 +127,10 @@ describe("enrutado del agente", () => {
     const shortcut = await run(agent, chat("/pendientes"));
     expect(find(shortcut, "done")!.text).toContain("Hay 1 traspaso sin recibir");
     // Sin valoración de Jev, la reposición se muestra igualmente con las cifras calculadas.
-    const reorder = find(await run(agent, chat("/reponer")), "done")!.text;
+    const reorderEvents = await run(agent, chat("/reponer"));
+    const reorder = find(reorderEvents, "done")!.text;
     expect(reorder).toContain("conviene reponer 5 productos");
-    expect(reorder).toContain("Coca-Cola 20 cl (Vivero): quedan 2 cajas, pedir");
+    expect(find(reorderEvents, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ producto: "Coca-Cola 20 cl", local: "Vivero", stock: "2 cajas" })]));
     expect(reorder).toContain("No he podido valorar la urgencia");
   });
 });

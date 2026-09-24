@@ -8,19 +8,29 @@ describe("consultas de pedidos y gasto", () => {
     const events = await run(agent, chat("¿qué pedidos tengo pendientes?"));
     const text = find(events, "done")!.text;
     expect(text).toContain("1 pedido pendiente de recibir (184,80 €), 1 con retraso y 1 borrador sin enviar.");
-    expect(text).toContain("Distribuciones Canarias → Parador: enviado ⚠ con retraso");
-    expect(text).toContain("Bebidas del Sur → Vivero: borrador sin enviar");
+    // El detalle va en la tabla; el texto es el titular.
+    const table = find(events, "table")!;
+    expect(table.columns.map((c) => c.label)).toEqual(expect.arrayContaining(["Proveedor", "Local", "Estado", "Importe"]));
+    expect(table.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ proveedor: "Distribuciones Canarias", local: "Parador", estado: "enviado" }),
+      expect.objectContaining({ proveedor: "Bebidas del Sur", local: "Vivero", estado: "borrador sin enviar" }),
+    ]));
+    expect(table.flagged).toHaveLength(1);
+    expect(text).not.toContain("•");
     expect(find(events, "navigate")).toMatchObject({ route: "/pedidos" });
   });
 
-  it("gasto en compras por proveedor en el periodo, con gráfica", async () => {
+  it("gasto en compras por proveedor en el periodo, en tabla", async () => {
     const jev = new FakeJev([{ intent: "consultar", intent_alt: "leer", herramienta: "query_spend", periodo: "mes" }]);
     const { agent } = makeAgent(jev);
     const events = await run(agent, chat("¿cuánto he gastado en compras este mes?"));
     const text = find(events, "done")!.text;
     expect(text).toMatch(/Compras del .+: 382,80 € en 3 albaranes\./);
-    expect(text).toContain("Bebidas del Sur: 198,00 € (51,7 %)");
-    expect(text).toContain("Distribuciones Canarias: 184,80 € (48,3 %)");
-    expect(find(events, "chart")).toMatchObject({ id: "compras-proveedor", kind: "bar" });
+    expect(find(events, "table")!.rows).toEqual([
+      { proveedor: "Bebidas del Sur", importe: "198,00 €", porcentaje: "51,7 %" },
+      { proveedor: "Distribuciones Canarias", importe: "184,80 €", porcentaje: "48,3 %" },
+    ]);
+    // Con tabla, la gráfica de barras repetiría las mismas cifras: no se envía.
+    expect(find(events, "chart")).toBeUndefined();
   });
 });

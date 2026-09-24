@@ -44,9 +44,10 @@ export function renderTemplate(report: DecisionReport): string {
     case "borrador": {
       const review = o.draft.checks?.filter((c) => c.status === "revisar") ?? [];
       if (review.length > 0) {
-        return `He preparado un borrador: ${o.draft.title}. Antes de confirmarlo revisa ${review.length === 1 ? "este aviso" : "estos avisos"}: ${review.map((c) => c.detail).join(" ")}`;
+        return `He preparado un borrador. Antes de confirmarlo revisa ${review.length === 1 ? "este aviso" : "estos avisos"}: ${review.map((c) => c.detail).join(" ")}`;
       }
-      return `He preparado un borrador: ${o.draft.title}. Revísalo y confírmalo si es correcto.`;
+      // El título ya va en la tarjeta del borrador: el texto no lo repite.
+      return "He preparado un borrador: revísalo y confírmalo si es correcto.";
     }
     case "error":
       return o.message;
@@ -59,7 +60,9 @@ export function renderTemplate(report: DecisionReport): string {
 
 /** Los avisos («Sigo con…», «No has indicado local…») van delante: explican lo que viene después. */
 function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>): string {
-  const body = renderQueryBody(o);
+  // Con tabla, el texto es solo el titular: la lista va en la tabla.
+  const full = renderQueryBody(o);
+  const body = o.tabulated ? full.split("\n").filter((line) => !line.startsWith("• ") && !line.startsWith("…y ")).join("\n") : full;
   return o.notices.length > 0 ? `${o.notices.join(" ")}\n${body}` : body;
 }
 
@@ -94,7 +97,7 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const head =
         result.count === 1
           ? `Stock ${where}: ${result.rows[0]!.cantidad} (${result.rows[0]!.valor}).`
-          : `Stock ${where}: valor total ${result.totals.valor_total}. Bajo mínimo: ${result.totals.bajo_minimo}.`;
+          : `Stock ${where}: valor total ${result.totals.valor_total}.${result.totals.bajo_minimo !== "0" ? ` ${plural(result.totals.bajo_minimo ?? "0", "producto bajo mínimo", "productos bajo mínimo")}.` : ""}`;
       if (result.count === 1) return `${head}${result.rows[0]!.bajo_minimo ? ` Está por debajo del mínimo (${result.rows[0]!.minimo}).` : ""}`;
       return `${head}\n${list(result.rows, (r) => `${r.producto} (${r.local}${r.espacio ? ` · ${r.espacio}` : ""}): ${r.cantidad}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`)}${more}`;
     }
