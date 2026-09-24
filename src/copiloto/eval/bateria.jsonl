@@ -54,6 +54,8 @@
 {"kind":"cantidad","message":"pasa 1,5 kg de limas al parador","expect":[{"amount":"1.5","unit":"kg","product":"limas"}]}
 {"kind":"cantidad","message":"dos botellas de moet rotas","expect":[{"amount":"2","unit":"botella","product":"moet"}]}
 {"kind":"cantidad","message":"pasa monkey 47 al vivero","expect":[]}
+{"kind":"cantidad","message":"pasa 3 botellas rotas de barceló al vivero","expect":[{"amount":"3","unit":"botella","product":"barceló"}]}
+{"kind":"cantidad","message":"tira 2 cajas caducadas del zumo de piña","expect":[{"amount":"2","unit":"caja","product":"zumo de piña"}]}
 {"kind":"cantidad","message":"media caja de red bull","expect":[{"amount":"0.5","unit":"caja","product":"red bull"}]}
 {"kind":"cantidad","message":"una docena de limones","expect":[{"amount":"12","unit":"ud","product":"limones"}]}
 // Respuestas escritas a una pregunta del asistente.

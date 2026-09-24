@@ -25,6 +25,8 @@ import type { RoutingMeta } from "./routing";
 import type { Focus } from "./session";
 import { preferredLocation, type Habits } from "./habits";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
+import { relevant, slotSpec, type ContextKey } from "../gates/policy";
+import { namesAll, namesProduct } from "../entities/mentions";
 
 export interface ClarifyPlan {
   type: "clarify";
@@ -203,6 +205,34 @@ export class Interpreter {
     return g;
   }
 
+  /**
+   * Un dato según la política del contexto: si es irrelevante no se evalúa ni se enseña (null); si
+   * el mensaje lo nombra tal cual, basta menos seguridad (salvo en operaciones críticas).
+   */
+  private gateSlot(context: ContextKey, slot: "local" | "local_destino" | "espacio", id: string, decisionLabel: string): ChoiceGate | null {
+    if (!relevant(context, slot)) return null;
+    const answer = this.choice(id);
+    if (!answer) return null;
+    return this.gate(id, decisionLabel, slotSpec(this.thresholds, context, slot, this.literal(slot, answer.choice)));
+  }
+
+  /** ¿El mensaje nombra tal cual esta opción? */
+  private literal(slot: "local" | "local_destino" | "espacio", option: string): boolean {
+    const message = this.meta.message;
+    if (!message) return false;
+    if (slot === "espacio") {
+      const areaId = this.meta.areaKeys.get(option);
+      const area = areaId ? this.ctx.areas.find((a) => a.id === areaId) : undefined;
+      return !!area && namesAll(message, area.name);
+    }
+    return this.meta.locationKeys.has(option) && namesAll(message, option);
+  }
+
+  /** Con un solo local no hay nada que preguntar: es ese. */
+  private onlyLocation(): string | null {
+    return this.ctx.locations.length === 1 ? this.ctx.locations[0]!.id : null;
+  }
+
   private clarify(field: ClarifyField, question: string, ranked: RankedOption[], exclude: string[] = [], labeler: (v: string) => string = label, segmentIndex?: number): ClarifyPlan {
     // Los locales son pocos: se ofrecen todos (hasta 6); del resto, las 3 opciones más probables.
     const max = field === "local" || field === "local_destino" ? 6 : 3;
@@ -292,9 +322,9 @@ export class Interpreter {
       return this.clarify("destino", "¿A qué pantalla quieres ir?", g?.ranked ?? [], ["ninguna"]);
     }
     const filters: NavigateFilters = {};
-    const loc = this.readLocation(this.thresholds.local_consulta);
+    const loc = this.readLocation("navegar");
     if (loc.ids.length === 1 && !loc.defaulted) filters.locationId = loc.ids[0]!;
-    const products = this.resolveProducts(this.thresholds.producto_consulta, false);
+    const products = this.resolveProducts("navegar", false);
     if (!("type" in products) && products.length === 1) filters.productId = products[0]!.product.id;
     if (g.choice === "/informes") {
       // Navegar es reversible: basta la consulta más probable para elegir la vista.
@@ -307,10 +337,11 @@ export class Interpreter {
   }
 
   /** Local para una lectura: si no está claro, todos los accesibles (fallback seguro, se avisa). */
-  private readLocation(spec: GateSpec): { ids: string[]; defaulted: boolean } {
+  private readLocation(context: ContextKey): { ids: string[]; defaulted: boolean } {
     const all = this.ctx.locations.map((l) => l.id);
-    const g = this.gate("local", "Local", spec);
-    if (!g) return { ids: all, defaulted: true };
+    if (all.length === 1) return { ids: all, defaulted: false };
+    const g = this.gateSlot(context, "local", "local", "Local");
+    if (!g) return { ids: all, defaulted: relevant(context, "local") };
     const id = this.meta.locationKeys.get(g.choice);
     if (g.outcome === "actuar" && id) return { ids: [id], defaulted: false };
     if (g.outcome === "actuar" && g.choice === TODOS) return { ids: all, defaulted: false };
@@ -320,8 +351,8 @@ export class Interpreter {
     return { ids: all, defaulted: true };
   }
 
-  private readArea(spec: GateSpec): { id: string | null; outcome: GateOutcome } {
-    const g = this.gate("espacio", "Espacio", spec);
+  private readArea(context: ContextKey): { id: string | null; outcome: GateOutcome } {
+    const g = this.gateSlot(context, "espacio", "espacio", "Espacio");
     if (!g || g.choice === NO_INDICADO) return { id: null, outcome: "actuar" };
     return { id: this.meta.areaKeys.get(g.choice) ?? null, outcome: g.outcome };
   }
@@ -338,11 +369,16 @@ export class Interpreter {
       .map(([, product]) => product);
   }
 
-  private resolveProducts(spec: GateSpec, forAction: boolean): ResolvedProduct[] | ClarifyPlan {
+  private resolveProducts(context: ContextKey, forAction: boolean): ResolvedProduct[] | ClarifyPlan {
     const resolved: ResolvedProduct[] = [];
+    if (!relevant(context, "producto")) return resolved;
     for (const [i, rs] of this.meta.segments.entries()) {
       const id = `producto_${i}`;
-      const g = this.gate(id, "Producto", spec, (v) => (v === NINGUNO || v === VARIOS ? label(v) : v));
+      const answer = this.choice(id);
+      // Evidencia literal: el fragmento nombra el producto elegido («2 cajas de beefeater»).
+      const chosen = answer ? rs.candidates.get(answer.choice) : undefined;
+      const literal = !!chosen && namesProduct(rs.segment.productText || rs.segment.text, chosen);
+      const g = this.gate(id, "Producto", slotSpec(this.thresholds, context, "producto", literal), (v) => (v === NINGUNO || v === VARIOS ? label(v) : v));
       if (!g) continue;
       if (g.choice === NINGUNO && g.outcome === "actuar") continue;
       // "ron" con varios rones: en una consulta se incluyen todos; en una escritura se pregunta cuál.
@@ -416,16 +452,18 @@ export class Interpreter {
       if (!focusTool || !this.followsUp()) return this.clarify("herramienta", "¿Qué quieres consultar?", g?.ranked ?? [], ["ninguna"]);
       tool = focusTool;
     }
-    const loc = this.readLocation(this.thresholds.local_consulta);
-    const area = this.readArea(this.thresholds.local_consulta);
-    let products = this.resolveProducts(this.thresholds.producto_consulta, false);
+    const context: ContextKey = `consulta:${tool as ToolName}`;
+    const loc = this.readLocation(context);
+    const area = this.readArea(context);
+    let products = this.resolveProducts(context, false);
     if ("type" in products) return products;
-    let periodo = (this.choice("periodo")?.choice ?? NO_INDICADO) as Periodo;
+    // El periodo solo cuenta donde importa (movimientos, gasto, precios…), no en el stock de ahora.
+    let periodo = (relevant(context, "periodo") ? this.choice("periodo")?.choice ?? NO_INDICADO : NO_INDICADO) as Periodo;
 
     // Lo que este mensaje no dice se toma del anterior, si lo continúa.
     const focus = this.focus;
     if (focus && (products.length === 0 || loc.defaulted || periodo === NO_INDICADO) && this.followsUp()) {
-      if (products.length === 0 && focus.productIds.length > 0) {
+      if (products.length === 0 && focus.productIds.length > 0 && relevant(context, "producto")) {
         products = focus.productIds
           .map((id) => this.ctx.products.find((p) => p.id === id))
           .filter((p): p is Product => !!p)
@@ -433,12 +471,12 @@ export class Interpreter {
         if (products.length > 0) inherited.push(products.length === 1 ? products[0]!.product.name : `${products.length} productos`);
       }
       const focusLocations = focus.locationIds.filter((id) => this.ctx.locations.some((l) => l.id === id));
-      if (loc.defaulted && focusLocations.length > 0) {
+      if (loc.defaulted && focusLocations.length > 0 && relevant(context, "local")) {
         loc.ids = focusLocations;
         loc.defaulted = false;
         inherited.push(focusLocations.map((id) => locationLabel(this.ctx, id)).join(", "));
       }
-      if (periodo === NO_INDICADO && focus.periodo && focus.periodo !== NO_INDICADO) {
+      if (periodo === NO_INDICADO && focus.periodo && focus.periodo !== NO_INDICADO && relevant(context, "periodo")) {
         periodo = focus.periodo as Periodo;
         inherited.push(label(periodo).toLowerCase());
       }
@@ -467,10 +505,10 @@ export class Interpreter {
    * necesita local. El resto de datos (precio, proveedor, cantidad) los extrae el código del mensaje.
    */
   private catalogAction(accion: CatalogAccion): Plan {
-    const t = this.thresholds;
-    const locGate = this.gate("local", "Local", t.local_borrador);
-    let locationId = locGate ? this.meta.locationKeys.get(locGate.choice) ?? null : null;
-    let locationOutcome: GateOutcome = locationId ? locGate!.outcome : "preguntar";
+    const context: ContextKey = `accion:${accion}`;
+    const locGate = this.gateSlot(context, "local", "local", "Local");
+    let locationId = locGate ? this.meta.locationKeys.get(locGate.choice) ?? null : this.onlyLocation();
+    let locationOutcome: GateOutcome = locGate && locationId ? locGate.outcome : locationId ? "actuar" : "preguntar";
 
     if (accion === "nuevo_producto") {
       return { type: "catalogo", accion, locationId: locationOutcome === "actuar" ? locationId : null, locationOutcome, products: [] };
@@ -482,7 +520,7 @@ export class Interpreter {
       // está segura cuando la de local duda (medido con Jev real). Se usa la que esté segura; si
       // ninguna lo está pero coinciden, se sigue marcando el local para revisar.
       if (locationOutcome !== "actuar") {
-        const dest = this.gate("local_destino", "Local destino", t.local_borrador);
+        const dest = this.gateSlot(context, "local_destino", "local_destino", "Local destino");
         const destId = dest && dest.choice !== NO_APLICA ? this.meta.locationKeys.get(dest.choice) ?? null : null;
         if (destId && dest!.outcome === "actuar") {
           locationId = destId;
@@ -498,13 +536,13 @@ export class Interpreter {
       if (!locationId || locationOutcome === "preguntar") {
         return this.clarify("local", "¿Para qué local es el pedido?", this.locationOptions(locGate?.ranked ?? []), [TODOS, NO_INDICADO], (key) => key);
       }
-      const products = this.resolveProducts(t.producto_borrador, true);
+      const products = this.resolveProducts(context, true);
       if ("type" in products) return products;
       const periodo = (this.choice("periodo")?.choice ?? NO_INDICADO) as Periodo;
       return { type: "catalogo", accion, locationId, locationOutcome, products, periodo };
     }
 
-    const products = this.resolveProducts(t.producto_borrador, true);
+    const products = this.resolveProducts(context, true);
     if ("type" in products) return products;
     if (products.length === 0) {
       const question = accion === "cambiar_precio" ? "¿De qué producto quieres cambiar el precio?" : accion === "archivar_producto" ? "¿Qué producto quieres archivar?" : "¿De qué producto?";
@@ -533,17 +571,21 @@ export class Interpreter {
     if ((CATALOG_ACCIONES as readonly string[]).includes(g.choice)) return this.catalogAction(g.choice as CatalogAccion);
     const accion = g.choice as Exclude<Accion, "ninguna" | CatalogAccion>;
     const t = this.thresholds;
+    const context: ContextKey = `accion:${accion}`;
 
-    const area = this.readArea(t.local_borrador);
+    const area = this.readArea(context);
     const areaId = area.outcome === "actuar" ? area.id : null;
     const areaLocation = areaId ? this.ctx.areas.find((a) => a.id === areaId)?.locationId ?? null : null;
     const locationName = (key: string) => key;
 
     // Local de origen: donde se mueve el stock. Por debajo de ask → se pregunta.
-    const locGate = this.gate("local", "Local", t.local_borrador);
+    const locGate = this.gateSlot(context, "local", "local", "Local");
     let resolvedLocation = locGate ? this.meta.locationKeys.get(locGate.choice) ?? null : null;
     let locationOutcome: GateOutcome = resolvedLocation ? locGate!.outcome : "preguntar";
-    if (!resolvedLocation && areaLocation) {
+    if (!resolvedLocation && this.onlyLocation()) {
+      resolvedLocation = this.onlyLocation();
+      locationOutcome = "actuar";
+    } else if (!resolvedLocation && areaLocation) {
       resolvedLocation = areaLocation;
       locationOutcome = "actuar";
     } else if (!resolvedLocation && this.pageLocationId) {
@@ -559,7 +601,7 @@ export class Interpreter {
     let toLocationId: string | null = null;
     let toLocationOutcome: GateOutcome = "actuar";
     if (accion === "traspaso") {
-      const toGate = this.gate("local_destino", "Local destino", t.local_borrador);
+      const toGate = this.gateSlot(context, "local_destino", "local_destino", "Local destino");
       toLocationId = toGate && toGate.choice !== NO_APLICA ? this.meta.locationKeys.get(toGate.choice) ?? null : null;
       toLocationOutcome = toLocationId && toLocationId !== resolvedLocation ? toGate!.outcome : "preguntar";
       if (toLocationOutcome === "preguntar") {
@@ -568,13 +610,13 @@ export class Interpreter {
       }
     }
 
-    const products = this.resolveProducts(t.producto_borrador, true);
+    const products = this.resolveProducts(context, true);
     if ("type" in products) return products;
-    if (products.length === 0 && accion !== "cierre_inventario") {
+    if (products.length === 0 && relevant(context, "producto")) {
       return { type: "clarify", field: "producto", question: "¿Qué producto y qué cantidad?", options: [] };
     }
     for (const p of products) {
-      if (accion !== "cierre_inventario" && (p.amount === null || p.quantityOutcome === "preguntar")) {
+      if (relevant(context, "cantidad") && (p.amount === null || p.quantityOutcome === "preguntar")) {
         const options = p.amount !== null ? [{ id: "si", label: `Sí, ${p.amount} ${p.unit ?? ""}`.trim(), probability: null }] : [];
         return { type: "clarify", field: "cantidad", question: `¿Qué cantidad de ${p.product.name}?`, options, segmentIndex: p.segmentIndex };
       }
@@ -599,7 +641,7 @@ export class Interpreter {
       };
     }
 
-    const motivo = (this.choice("motivo_merma")?.choice ?? NO_INDICADO) as MotivoMerma;
+    const motivo = (relevant(context, "motivo") ? this.choice("motivo_merma")?.choice ?? NO_INDICADO : NO_INDICADO) as MotivoMerma;
     const ambiguous = asNoul(this.answers.ambiguo)?.noul ?? 0;
     return {
       type: "accion",

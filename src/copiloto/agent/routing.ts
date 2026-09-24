@@ -23,6 +23,8 @@ export interface RoutingMeta {
   /** Clave de opción Jev → id de local / espacio. */
   locationKeys: Map<string, string>;
   areaKeys: Map<string, string>;
+  /** Mensaje interpretado: la política de confianza busca en él evidencia literal (locales, productos). */
+  message?: string;
 }
 
 export interface RoutingRequest {
@@ -33,6 +35,23 @@ export interface RoutingRequest {
 
 function optionKey(name: string): string {
   return RESERVED_KEYS.has(name) ? `${name} (producto)` : name;
+}
+
+/** Palabras que sitúan en el tiempo («hoy», «la semana pasada», «el finde», «del 3/9»). */
+const PERIOD_WORDS = new Set([
+  "hoy", "ayer", "anoche", "manana", "semana", "semanas", "semanal", "mes", "meses", "mensual", "finde", "fin", "ano", "dia", "dias",
+  "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo", "quincena", "trimestre", "noche", "ultimo", "ultimos",
+  "ultima", "ultimas", "pasado", "pasada", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
+  "setiembre", "octubre", "noviembre", "diciembre", "desde", "hasta", "fecha", "fechas",
+]);
+
+export function mentionsPeriod(message: string): boolean {
+  return /\b\d{1,2}[/-]\d{1,2}\b/.test(message) || tokenize(message).some((w) => PERIOD_WORDS.has(w));
+}
+
+/** Por qué se da de baja algo: roturas, caducidad, derrames, invitaciones, errores de servicio. */
+export function mentionsReason(message: string): boolean {
+  return /romp|\brot[oa]s?\b|caduc|derram|invit|error|equivoc|estrope|podri|venci|mal servid|se (?:ha|han) caido|cayo|tirad/.test(tokenize(message).join(" "));
 }
 
 /** Palabras genéricas de espacio: «¿qué hay en cada sección?» también pide ver los espacios. */
@@ -110,6 +129,10 @@ export async function buildRouting(
 
   const questions = routingQuestions({
     pendingDraft: !!pendingDraft,
+    // Solo se pregunta lo que el mensaje puede contestar: menos tokens y menos ruido.
+    askLocation: ctx.locations.length > 1,
+    askPeriod: mentionsPeriod(message),
+    askReason: mentionsReason(message),
     locations: [...locationKeys.keys()],
     areas: [...areaKeys.keys()],
     segments: routingSegments.map((rs) => ({
@@ -119,5 +142,5 @@ export async function buildRouting(
     selfConsistency,
   });
 
-  return { state, questions, meta: { segments: routingSegments, locationKeys, areaKeys } };
+  return { state, questions, meta: { segments: routingSegments, locationKeys, areaKeys, message } };
 }

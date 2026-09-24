@@ -64,6 +64,12 @@ const NON_PRODUCT_NOUNS = new Set([
   "semana", "mes", "dia", "hora", "par",
 ]);
 
+/** Estado de lo que se da de baja; puede ir entre la unidad y el producto. */
+const DAMAGE = new Set([
+  "roto", "rota", "rotos", "rotas", "caducado", "caducada", "caducados", "caducadas", "derramado", "derramada",
+  "derramados", "derramadas", "abierto", "abierta", "abiertos", "abiertas", "estropeado", "estropeada", "estropeados", "estropeadas",
+]);
+
 const SIZE_UNITS = new Set(["cl", "ml", "l", "g", "kg"]);
 
 const LEADING_FILLERS = new Set(["de", "del", "la", "el", "los", "las"]);
@@ -145,6 +151,11 @@ export function parseQuantities(message: string, maxSegments = 5): Segment[] {
     }
 
     while (toks[i] && LEADING_FILLERS.has(toks[i]!.norm)) i += 1;
+    // «3 botellas rotas de ron», «2 cajas caducadas del zumo»: el estado va antes del producto.
+    if (toks[i] && DAMAGE.has(toks[i]!.norm) && toks[i + 1] && LEADING_FILLERS.has(toks[i + 1]!.norm)) {
+      i += 1;
+      while (toks[i] && LEADING_FILLERS.has(toks[i]!.norm)) i += 1;
+    }
     const productTokens: Token[] = [];
     while (toks[i] && productTokens.length < 6) {
       const t = toks[i]!;
