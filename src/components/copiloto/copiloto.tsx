@@ -41,9 +41,10 @@ const ROUTE_LABELS: Record<AppRoute, string> = {
 
 const EXAMPLES = [
   "¿Qué me falta para el finde?",
-  "¿Cuánto ron queda en Parador?",
+  "Prepara el pedido de la semana",
+  "¿Qué pedidos tengo pendientes?",
+  "¿Cuánto he gastado este mes?",
   "El Barceló ahora cuesta 15 €",
-  "Añade Ginebra Nordés 70 cl a 18 €",
 ];
 
 const DECIMAL = /^\d+([.,]\d+)?$/;

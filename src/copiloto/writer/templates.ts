@@ -33,7 +33,7 @@ export function renderTemplate(report: DecisionReport): string {
     case "bloqueado":
       return "No puedo hacer eso. Pregúntame por el stock, los movimientos o las operaciones de tus locales.";
     case "conversacion":
-      return "Puedo consultar stock, movimientos, precios, traspasos pendientes y desvíos de inventario, llevarte a cualquier pantalla y preparar operaciones para que las confirmes: mermas, traspasos, recepciones, cambios de precio, altas de producto, mínimos y archivar productos. Antes de proponer un cambio compruebo duplicados y cifras raras. Prueba con «¿cuánto ron queda en Parador?», «el Barceló ahora cuesta 15 €» o «añade Ginebra Nordés 70 cl».";
+      return "Puedo consultar stock, consumo, mermas, precios, pedidos pendientes, gasto por proveedor y desvíos de inventario, y preparar operaciones para que las confirmes: pedidos, mermas, traspasos, recepciones, precios, altas de producto, mínimos y archivar. Recuerdo de qué hablamos («¿y en el Vivero?») y puedes confirmar con un «sí, adelante». Antes de proponer un cambio compruebo duplicados y cifras raras. Prueba con «prepara el pedido de la semana para Parador» o «¿cuánto he gastado este mes?».";
     case "navegacion":
       return o.navigate.auto ? `Te llevo a ${o.destino}.` : `¿Quieres ir a ${o.destino}?`;
     case "borrador": {
