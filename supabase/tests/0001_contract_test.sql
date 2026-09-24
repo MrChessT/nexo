@@ -1,5 +1,7 @@
 begin;
 
+create extension if not exists pgtap with schema extensions;
+
 select plan(10);
 
 select ok((select relrowsecurity from pg_class where oid = 'public.organizations'::regclass), 'organizations has RLS enabled');

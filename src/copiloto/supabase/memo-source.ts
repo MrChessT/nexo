@@ -31,5 +31,6 @@ export function memoizeSource(source: InventoryDataSource): InventoryDataSource 
     prices: memo("prices", source.prices),
     transfers: memo("transfers", source.transfers),
     countResults: memo("countResults", source.countResults),
+    openOrders: memo("openOrders", source.openOrders),
   };
 }

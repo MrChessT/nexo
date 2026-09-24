@@ -56,3 +56,23 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     expect(PRODUCTS.length).toBeGreaterThan(0);
   });
 });
+
+describe("reposición con pedidos abiertos", () => {
+  it("lo ya pedido y no recibido cuenta como en camino y reduce lo sugerido", async () => {
+    const { computeReorder } = await import("../tools/tools");
+    const vivero = LOCATIONS[2]!.id;
+    const coca = PRODUCTS[3]!;
+    const params = { ...base, locationIds: [vivero], horizonDays: 3 };
+
+    const without = new FixtureDataSource(NOW);
+    const before = (await computeReorder(without, params, ctx)).find((l) => l.product.id === coca.id)!;
+
+    const withOrder = new FixtureDataSource(NOW);
+    withOrder.openOrderLines = [{ locationId: vivero, productId: coca.id, qtyBase: "48" }];
+    const after = (await computeReorder(withOrder, params, ctx)).find((l) => l.product.id === coca.id)!;
+
+    // Ya había 48 en camino por un traspaso; el pedido suma otros 48.
+    expect(after.pendingIn.minus(before.pendingIn).toString()).toBe("48");
+    expect(before.suggested.minus(after.suggested).toString()).toBe("48");
+  });
+});

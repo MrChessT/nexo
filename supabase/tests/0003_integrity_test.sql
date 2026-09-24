@@ -1,5 +1,7 @@
 begin;
 
+create extension if not exists pgtap with schema extensions;
+
 select plan(6);
 
 select has_table('public', 'organizations', 'organizations exists');

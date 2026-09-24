@@ -30,17 +30,20 @@ const REQUIRED_ROLE: Record<Draft["kind"], Role> = {
   producto_nuevo: "manager",
   minimo: "manager",
   archivar: "manager",
+  // Un pedido se crea en borrador: cualquiera del local puede prepararlo; enviarlo es de encargado.
+  pedido: "staff",
 };
 
 const EDITABLE: Record<Draft["kind"], string[]> = {
   merma: ["qtyBase", "reason", "areaId", "acknowledged"],
   traspaso: ["lines.*.qtyBase", "send", "note", "acknowledged"],
   recepcion: ["lines.*.packsQty", "lines.*.packPrice", "supplierId", "docNumber", "docDate", "acknowledged"],
-  cierre_inventario: ["zeroUncounted", "acknowledged"],
+  cierre_inventario: ["zeroUncounted", "asConsumption", "acknowledged"],
   precio: ["newPrice", "acknowledged"],
   producto_nuevo: ["name", "categoryId", "dimension", "packName", "packQtyBase", "price", "acknowledged"],
   minimo: ["newValue", "acknowledged"],
   archivar: ["acknowledged"],
+  pedido: ["orders.*.lines.*.packsQty", "acknowledged"],
 };
 
 /** Cabecera común de cualquier borrador (id, rol, caducidad, campos editables). */
@@ -307,6 +310,8 @@ export class DraftBuilder {
       locationId: plan.locationId,
       locationName: name,
       zeroUncounted: false,
+      // En un bar sin TPV, lo que falta al contar es lo que se ha servido: consumo real.
+      asConsumption: true,
       preview: { countedProducts: counted.size, adjustments, totalDiffValue: total.toString() },
     };
     return {

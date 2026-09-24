@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowLeft,
-  Bell,
   ChevronDown,
   CirclePlus,
   ClipboardList,
@@ -19,8 +18,10 @@ import {
 import { useEffect, useState } from "react";
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
+import { euros as formatCurrency } from "@/lib/format";
 import "./operations.css";
 import "./operations-modal.css";
+import { CountModal } from "./count-modal";
 
 type OperationKind = "recepciones" | "traspasos" | "inventarios" | "mermas";
 type StatusColor = "green" | "orange" | "purple" | "red";
@@ -73,10 +74,6 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function formatCurrency(value: number) {
-  return `${new Decimal(String(value)).toFixed(2).replace(".", ",")} €`;
-}
-
 function newRef() {
   return crypto.randomUUID();
 }
@@ -123,9 +120,6 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
   // Inventarios
   const [ivLocation, setIvLocation] = useState("");
   const [countModal, setCountModal] = useState<{ id: string; locationId: string } | null>(null);
-  const [countQtys, setCountQtys] = useState<Record<string, string>>({});
-  const [countSaving, setCountSaving] = useState(false);
-  const [countError, setCountError] = useState("");
 
   async function loadReference() {
     const supabase = createClient();
@@ -274,8 +268,6 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
               tone: "primary",
               onClick: () => {
                 setCountModal({ id: c.id, locationId: c.location_id });
-                setCountQtys({});
-                setCountError("");
               },
             });
           }
@@ -535,47 +527,6 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
     await loadRows();
   }
 
-  async function handleSaveCountLines() {
-    if (!countModal) return;
-    setCountError("");
-    const entries = Object.entries(countQtys).filter(([, qty]) => qty.trim() !== "" && Number(qty) >= 0);
-    if (entries.length === 0) { setCountError("Introduce al menos una cantidad."); return; }
-    setCountSaving(true);
-    const supabase = createClient();
-    if (!supabase) { setCountError("Supabase no está configurado."); setCountSaving(false); return; }
-    const { error } = await supabase.from("count_lines").insert(
-      entries.map(([productId, qty]) => ({ count_id: countModal.id, product_id: productId, qty: Number(qty), client_ref: newRef() })),
-    );
-    if (error) {
-      setCountError("No se pudieron guardar las líneas contadas.");
-      setCountSaving(false);
-      return;
-    }
-    setCountQtys({});
-    setCountSaving(false);
-    await loadRows();
-  }
-
-  async function handleCloseCount() {
-    if (!countModal) return;
-    setCountSaving(true);
-    setCountError("");
-    const supabase = createClient();
-    if (!supabase) { setCountError("Supabase no está configurado."); setCountSaving(false); return; }
-    if (Object.values(countQtys).some((qty) => qty.trim() !== "")) {
-      await handleSaveCountLines();
-    }
-    const { error } = await supabase.rpc("close_count", { p_count: countModal.id, p_zero_uncounted: true });
-    if (error) {
-      setCountError("No se pudo cerrar el inventario.");
-      setCountSaving(false);
-      return;
-    }
-    setCountSaving(false);
-    setCountModal(null);
-    await loadRows();
-  }
-
   const statusOptions: Record<OperationKind, Array<{ value: string; label: string }>> = {
     recepciones: [
       { value: "open", label: "Abierta" },
@@ -603,10 +554,7 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
       <header className="operations-topbar">
         <Link href="/" className="back-link"><ArrowLeft size={16} /> Resumen</Link>
         <span className="operations-brand"><span>NEXO</span> · {titles[kind]}</span>
-        <div className="operations-top-actions">
-          <button aria-label="Notificaciones"><Bell size={17} /></button>
-          <span>MC</span>
-        </div>
+        <span />
       </header>
       <div className="operations-content">
         <div className="operations-heading">
@@ -812,31 +760,7 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
       )}
 
       {countModal && (
-        <div className="op-modal-layer" onClick={() => !countSaving && setCountModal(null)}>
-          <section className="op-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="op-modal-heading">
-              <div><p className="operation-eyebrow">Conteo</p><h2>Contar productos</h2></div>
-              <button className="op-modal-close" onClick={() => setCountModal(null)} aria-label="Cerrar"><X size={18} /></button>
-            </div>
-            <div className="op-modal-count-list">
-              {products.map((product) => (
-                <div className="op-modal-count-row" key={product.id}>
-                  <span>{product.name} <small>({product.base_unit})</small></span>
-                  <input
-                    type="number" min="0" step="any" placeholder="0"
-                    value={countQtys[product.id] ?? ""}
-                    onChange={(e) => setCountQtys({ ...countQtys, [product.id]: e.target.value })}
-                  />
-                </div>
-              ))}
-            </div>
-            {countError && <p className="op-modal-error">{countError}</p>}
-            <div className="op-modal-actions">
-              <button className="op-modal-submit op-modal-secondary" onClick={handleSaveCountLines} disabled={countSaving}>{countSaving ? "Guardando..." : "Guardar conteo"}</button>
-              <button className="op-modal-submit" onClick={handleCloseCount} disabled={countSaving}>{countSaving ? "Cerrando..." : "Cerrar inventario"}</button>
-            </div>
-          </section>
-        </div>
+        <CountModal count={countModal} products={products} onClose={() => setCountModal(null)} onChanged={() => void loadRows()} />
       )}
     </main>
   );

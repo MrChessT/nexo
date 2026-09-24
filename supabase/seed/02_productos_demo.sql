@@ -1,5 +1,5 @@
 -- Productos de ejemplo para ver el catalogo de Parador Eventos con datos reales.
--- Requiere haber ejecutado antes seed_parador_eventos.sql.
+-- Requiere haber ejecutado antes 01_parador_eventos.sql.
 -- Ejecutar una sola vez en el SQL Editor de Supabase. Para seleccionar todo: Ctrl+A.
 
 do $$
@@ -14,7 +14,7 @@ declare
 begin
   select id into v_org_id from organizations where name = 'Parador Eventos' limit 1;
   if v_org_id is null then
-    raise exception 'Organizacion no encontrada. Ejecuta primero seed_parador_eventos.sql.';
+    raise exception 'Organizacion no encontrada. Ejecuta primero 01_parador_eventos.sql.';
   end if;
 
   insert into categories (org_id, name, sort_order) values (v_org_id, 'Bebidas sin alcohol', 1) returning id into v_cat_refrescos;

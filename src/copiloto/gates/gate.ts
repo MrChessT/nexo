@@ -42,9 +42,6 @@ export function gateNoulNo(answer: NoulResponse, spec: GateSpec): GateOutcome {
   return answer.noul <= spec.act ? "actuar" : answer.noul <= spec.ask ? "confirmar" : "preguntar";
 }
 
-export function gateScore(answer: ScoreResponse, spec: GateSpec): GateOutcome {
-  return answer.confidence >= spec.act ? "actuar" : answer.confidence >= spec.ask ? "confirmar" : "preguntar";
-}
 
 /** Peor de varios resultados: preguntar > confirmar > actuar. */
 export function worst(...outcomes: GateOutcome[]): GateOutcome {

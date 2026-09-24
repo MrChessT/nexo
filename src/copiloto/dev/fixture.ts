@@ -9,6 +9,7 @@ import type {
   LocationProductRaw,
   MovementRaw,
   OpenCountRaw,
+  OpenOrderRaw,
   PriceRaw,
   SupplierPriceRaw,
   TransferRaw,
@@ -125,7 +126,14 @@ export class FixtureDataSource implements InventoryDataSource {
     { locationId: VIVERO.id, productId: P[9]!.id, minQty: "4000", parQty: "10000" },
   ];
 
+  /** Pedidos abiertos simulados (vacío salvo que un test los añada). */
+  openOrderLines: OpenOrderRaw[] = [];
+
   constructor(private readonly now: Date = new Date()) {}
+
+  async openOrders(filter: { locationIds: string[] }): Promise<OpenOrderRaw[]> {
+    return this.openOrderLines.filter((o) => filter.locationIds.includes(o.locationId));
+  }
 
   async openCount(locationId: string): Promise<OpenCountRaw | null> {
     if (locationId !== VIVERO.id) return null;

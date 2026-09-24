@@ -74,7 +74,7 @@ export interface ActionPlan {
 }
 
 /** Operaciones sobre el catálogo (no mueven stock). */
-export const CATALOG_ACCIONES = ["cambiar_precio", "nuevo_producto", "cambiar_minimo", "archivar_producto"] as const;
+export const CATALOG_ACCIONES = ["cambiar_precio", "nuevo_producto", "cambiar_minimo", "archivar_producto", "preparar_pedido"] as const;
 export type CatalogAccion = (typeof CATALOG_ACCIONES)[number];
 
 export interface CatalogPlan {
@@ -85,6 +85,8 @@ export interface CatalogPlan {
   locationOutcome: GateOutcome;
   /** Producto existente al que se refiere (precio, mínimo, archivar). Vacío en el alta. */
   products: ResolvedProduct[];
+  /** Periodo que debe cubrir un pedido ("para el finde", "de la semana"). */
+  periodo?: Periodo;
 }
 
 export type Plan =
@@ -361,6 +363,34 @@ export class Interpreter {
 
     if (accion === "nuevo_producto") {
       return { type: "catalogo", accion, locationId: locationOutcome === "actuar" ? locationId : null, locationOutcome, products: [] };
+    }
+
+    // Pedido: hace falta el local; los productos son opcionales (sin productos se pide lo que falta).
+    if (accion === "preparar_pedido") {
+      // En un pedido la mercancía llega AL local desde el proveedor: la pregunta de destino a veces
+      // está segura cuando la de local duda (medido con Jev real). Se usa la que esté segura; si
+      // ninguna lo está pero coinciden, se sigue marcando el local para revisar.
+      if (locationOutcome !== "actuar") {
+        const dest = this.gate("local_destino", "Local destino", t.local_borrador);
+        const destId = dest && dest.choice !== NO_APLICA ? this.meta.locationKeys.get(dest.choice) ?? null : null;
+        if (destId && dest!.outcome === "actuar") {
+          locationId = destId;
+          locationOutcome = "actuar";
+        } else if (destId && destId === locationId && dest!.outcome === "confirmar") {
+          locationOutcome = "confirmar";
+        }
+      }
+      if (!locationId && this.pageLocationId) {
+        locationId = this.pageLocationId;
+        locationOutcome = "confirmar";
+      }
+      if (!locationId || locationOutcome === "preguntar") {
+        return this.clarify("local", "¿Para qué local es el pedido?", locGate?.ranked ?? [], [TODOS, NO_INDICADO], (key) => key);
+      }
+      const products = this.resolveProducts(t.producto_borrador, true);
+      if ("type" in products) return products;
+      const periodo = (this.choice("periodo")?.choice ?? NO_INDICADO) as Periodo;
+      return { type: "catalogo", accion, locationId, locationOutcome, products, periodo };
     }
 
     const products = this.resolveProducts(t.producto_borrador, true);

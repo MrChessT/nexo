@@ -285,4 +285,21 @@ describe("confirmación", () => {
     expect(result).toMatchObject({ ok: false, code: "forbidden" });
     expect(writer.calls).toHaveLength(0);
   });
+
+  it("un encargado cierra el inventario registrando lo que falta como consumo (o como ajuste si lo desmarca)", async () => {
+    const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { winner: "cierre_inventario", p: 0.99 }, local: "Vivero" };
+    const { agent, drafts, audit } = makeAgent(new FakeJev([script, { coherencia: 0.9 }, script, { coherencia: 0.9 }]));
+    const service = new ConfirmService(drafts, audit, () => NOW);
+
+    const draft = find(await run(agent, chat("cierra el inventario del vivero")), "draft")!;
+    expect(draft).toMatchObject({ asConsumption: true, editable: expect.arrayContaining(["asConsumption"]) });
+    const writer = new FixtureWriter();
+    expect(await service.confirm({ orgId: ORG_ID, draftId: draft.draftId, idempotencyKey: key(1) }, fixtureContext(), writer)).toMatchObject({ ok: true });
+    expect(writer.calls[0]).toMatchObject({ method: "closeCount", args: { zeroUncounted: false, asConsumption: true } });
+
+    const other = find(await run(agent, chat("cierra el inventario del vivero")), "draft")!;
+    const adjust = new FixtureWriter();
+    await service.confirm({ orgId: ORG_ID, draftId: other.draftId, idempotencyKey: key(2), edits: { asConsumption: false } }, fixtureContext(), adjust);
+    expect(adjust.calls[0]).toMatchObject({ args: { asConsumption: false } });
+  });
 });

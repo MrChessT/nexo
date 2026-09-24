@@ -1,71 +1,96 @@
-# Nexo Inventario
+# Nexo Copiloto
 
-Aplicacion multilocal de inventario para hosteleria.
+Inventario multilocal para hostelería con un asistente que decide con **Jev** (TypeSafe AI).
+Cliente de referencia: Parador Eventos (Parador, Pickels, Vivero y La Oliva).
+
+**Principio:** Jev decide → el código calcula con `decimal.js` y escribe solo mediante RPC → el usuario confirma. Una LLM opcional solo redacta; sin ella responden plantillas.
+
+## Qué hace
+
+| Área | Pantalla | Asistente |
+| --- | --- | --- |
+| Resumen | `/`: valor del stock, consumo, rotación, alertas; filtro por local | «¿Qué debería revisar hoy?» |
+| Stock | `/stock`: existencias, bajo mínimo, exportar CSV | «¿Cuánto ron queda en Parador?» |
+| Catálogo | `/productos`: ficha con formatos, precios por proveedor y mínimos | Cambiar precio, dar de alta (con detección de duplicados), mínimos, archivar |
+| Proveedores | `/proveedores` | — |
+| Pedidos | `/pedidos`: sugerir, enviar (email/WhatsApp) y recibir contra el pedido | «Prepara el pedido de la semana para Parador» |
+| Recepciones, traspasos, mermas | `/recepciones`, `/traspasos`, `/mermas` | Borradores que se confirman con un clic |
+| Inventarios | `/inventarios`: conteo en formatos, revisión y cierre como consumo | «Cierra el inventario del Vivero» |
+| Informes | `/informes`: consumo, mermas, stock, precios, reposición, desvíos | Gráficas en el chat |
+
+## Estructura
+
+```
+src/
+  app/                 Pantallas (App Router) y la ruta /api/copiloto
+  components/          Asistente (panel), gráficas y operaciones compartidas
+  copiloto/            El agente, solo servidor: Jev, herramientas, borradores, analítica
+  lib/                 Supabase (clientes y tipos), formato es-ES, unidades, preferencias
+  proxy.ts             Sesión en cada navegación (Next 16: sustituye a middleware)
+supabase/
+  migrations/          Esquema, RLS y RPC, numerados (fuente de verdad)
+  tests/               Tests pgTAP de permisos y RPC (los ejecuta el CI)
+  seed/                Datos de ejemplo de Parador Eventos, en orden 01 → 04
+  scripts/             Herramientas puntuales (restablecer contraseña; aplicar.sql generado)
+  config.toml          Supabase local (Postgres 17, igual que producción)
+scripts/               Utilidades del repositorio (unir migraciones)
+docs/
+  copiloto/            Contrato de la API, arquitectura, catálogo de Jev y evaluación
+  parador-eventos-cobertura.md   Alcance frente al negocio
+```
 
 ## Desarrollo
 
 ```bash
-npm.cmd install
-npm.cmd run dev
+npm install
+npm run dev
 ```
 
-La aplicacion usa Next.js App Router, TypeScript estricto y Supabase. La migracion `0001_inventario_core.sql` es el contrato base y no se modifica; los cambios de esquema se añaden numerados en `supabase/migrations`. La migracion `0004_saldo_por_espacio.sql` añade el saldo por barra, almacen o camara sin romper el saldo agregado por local.
+Variables en `.env.local` (plantilla en `.env.example`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y, para Jev, `VERCEL_OIDC_TOKEN` (`npx vercel env pull .env.local`) o `TYPESAFE_API_KEY`.
 
-La cobertura específica de Parador Eventos y las capacidades pendientes están documentadas en [docs/parador-eventos-cobertura.md](docs/parador-eventos-cobertura.md).
-
-## Puerta de calidad
-
-Antes de integrar una funcionalidad:
+## Calidad
 
 ```bash
-npm.cmd run lint
-npm.cmd test
-npm.cmd run typecheck
-npm.cmd run build
+npm run check        # lint + tipos + tests + build (lo mismo que el CI)
 ```
 
-Para validar la base de datos necesitas Docker Desktop iniciado:
+- `npm test`: tests de la app y del asistente, con Jev y LLM simulados.
+- `npm run copiloto:eval`: set de frases contra Jev real (`--desde N`, `--lote N`).
+- `npm run copiloto:probe -- "frase"`: probabilidades de Jev para una frase (afinar el catálogo).
+- **CI** (GitHub Actions, cada push y PR): la app y la base de datos. La base de datos se levanta en local con todas las migraciones y pasa `supabase/tests`.
 
-```bash
-supabase.cmd start
-npm.cmd run db:reset
-npm.cmd run db:test
-npm.cmd run db:lint
-```
+Reglas del código: el stock solo cambia mediante RPC y `stock_movements` es inmutable; las cantidades se guardan en unidad base (ml, g, ud) y nunca se calculan con `number`; todo va con el JWT del usuario y RLS, sin service role.
 
-Los tests de `src/lib` cubren formulas sin conversiones de cantidades a `number`. Los tests de `supabase/tests` comprueban el contrato de RLS, triggers y RPC; los escenarios de permisos y movimientos deben ampliarse junto a cada migracion.
+## Base de datos
 
-## Reglas de datos
+Las migraciones se aplican en orden y se pueden repetir sin error.
 
-- Los productos, proveedores, formatos y locales pertenecen a una organizacion.
-- El stock solo cambia mediante RPC y `stock_movements` es inmutable.
-- Las cantidades se guardan en unidad base y los decimales se calculan con `decimal.js`.
-- Los datos de prueba se importan al modelo canonico, nunca mediante tablas paralelas.
+| Migración | Qué añade |
+| --- | --- |
+| 0001–0004 | Núcleo: organizaciones, catálogo, stock, documentos, RLS, saldo por espacio |
+| 0005–0006 | Asistente: auditoría, sesiones y borradores |
+| 0007 | Catálogo con filtros en servidor (`catalog_search`) |
+| 0008 | Rendimiento: RLS evaluada una vez por consulta, índices |
+| 0009 | Resumen filtrable por local y consumo con una sola definición |
+| 0010 | (retirada) |
+| 0011 | Consumo real por inventario (`close_count` como consumo, `count_preview`) |
+| 0012 | Pedidos a proveedor |
+| 0013 | Limpieza de la 0010, por si se llegó a aplicar |
+| 0014 | Permisos de tabla explícitos para usuarios autenticados (RLS sigue decidiendo las filas) |
 
-## Asistente (Nexo Copiloto)
+**Aplicar en el proyecto real:** `npm run db:bundle -- 0008` genera `supabase/scripts/aplicar.sql` con las migraciones desde la 0008, en una sola transacción. Se pega en Supabase → SQL Editor → Run.
 
-El asistente de chat (Ctrl+K o botón «Asistente») y la página **Informes** forman parte de esta app: mismo repositorio y mismo despliegue.
+**Local** (Docker): `npm run db:start`, `npm run db:reset`, `npm run db:test`.
 
-**Principio:** Jev (TypeSafe AI) decide → el código calcula con decimal.js y ejecuta con las RPC → una LLM opcional solo redacta. Si no hay LLM, responden plantillas.
+**Datos de ejemplo:** `supabase/seed/01…04` en orden (organización y locales, productos, catálogo de Vivero, stock de apertura).
 
-**Código**
-- `src/copiloto/`: el agente, solo en servidor.
-  - `jev/catalog.ts`: preguntas de Jev. `gates/thresholds.ts`: umbrales.
-  - `tools/` y `analytics/`: cálculos. `drafts/`: borradores y confirmación.
-  - `http.ts`: los endpoints.
-- `src/app/api/copiloto/[...ruta]/route.ts`: endpoints `chat` (SSE), `actions/confirm`, `suggestions`, `analytics` y `health`. Usan la sesión del usuario (cookies); todo va con su JWT y RLS, sin service role.
-- `src/components/copiloto/` (panel), `src/components/charts/` (gráficas SVG) y `src/app/informes/`.
-- `docs/copiloto/`: contrato, arquitectura, catálogo de preguntas y evaluación.
+## Asistente
 
-**Base de datos**
-- La primera vez, ejecuta `supabase/INSTALAR_ASISTENTE_Y_CATALOGO.sql` en el SQL Editor de Supabase. Instala las migraciones 0005 (auditoría) y 0006 (borradores y sesiones del asistente) y el catálogo de Vivero 55 en el modelo de la app.
-- Se puede repetir sin error.
+- `src/copiloto/jev/catalog.ts`: todas las preguntas a Jev (cambiar un texto sube `CATALOG_VERSION`). `gates/thresholds.ts`: umbrales de confianza.
+- `agent/`: interpretación y bucle; `drafts/`: borradores, comprobaciones y confirmación; `tools/` y `analytics/`: cálculos.
+- `src/app/api/copiloto/[...ruta]/route.ts`: `chat` (SSE), `actions/confirm`, `suggestions`, `analytics`, `reorder` y `health`.
+- Documentación: [contrato](docs/copiloto/CONTRACT.md), [arquitectura](docs/copiloto/PROPUESTA.md), [catálogo de Jev y mediciones](docs/copiloto/CATALOGO_JEV.md).
 
-**Variables**
-- En Vercel solo hacen falta `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Jev se autentica con el token OIDC del propio despliegue (Vercel AI Gateway), sin guardar claves.
-- En local, `npx vercel env pull .env.local` trae ese token.
+## Despliegue
 
-**Comprobaciones**
-- `npm.cmd test`: incluye los tests del asistente, con Jev y LLM simulados.
-- `npm.cmd run copiloto:eval`: 43 frases contra Jev real. Deja el resultado en la consola.
-- `/informes?vista=&local=&dias=` y `/stock?local=` aplican los filtros que envía el asistente.
+Vercel (`vercel.json`). En producción solo hacen falta las dos variables de Supabase: Jev se autentica con el token OIDC del propio despliegue (Vercel AI Gateway), sin guardar claves.

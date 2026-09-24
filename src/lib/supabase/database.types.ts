@@ -3,6 +3,50 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      organizations: {
+        Row: { id: string; name: string; business_type: string; currency: string; created_at: string };
+        Insert: { id?: string; name: string; business_type?: string; currency?: string };
+        Update: Partial<Database["public"]["Tables"]["organizations"]["Insert"]>;
+        Relationships: [];
+      };
+      purchase_orders: {
+        Row: {
+          id: string;
+          org_id: string;
+          location_id: string;
+          supplier_id: string;
+          status: "draft" | "sent" | "partial" | "received" | "cancelled";
+          note: string | null;
+          expected_date: string | null;
+          created_by: string | null;
+          created_at: string;
+          sent_by: string | null;
+          sent_at: string | null;
+          closed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          location_id: string;
+          supplier_id: string;
+          note?: string | null;
+          expected_date?: string | null;
+        };
+        Update: { supplier_id?: string; note?: string | null; expected_date?: string | null };
+        Relationships: [];
+      };
+      purchase_order_lines: {
+        Row: { id: string; order_id: string; pack_id: string; packs_qty: number; pack_price: number | null; received_packs: number };
+        Insert: { id?: string; order_id: string; pack_id: string; packs_qty: number; pack_price?: number | null };
+        Update: { packs_qty?: number; pack_price?: number | null };
+        Relationships: [];
+      };
+      profiles: {
+        Row: { user_id: string; full_name: string | null; created_at: string };
+        Insert: { user_id: string; full_name?: string | null };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -479,7 +523,20 @@ export type Database = {
       send_transfer: { Args: { p_transfer: string }; Returns: undefined };
       receive_transfer: { Args: { p_transfer: string; p_lines?: Json }; Returns: undefined };
       cancel_transfer: { Args: { p_transfer: string }; Returns: undefined };
-      close_count: { Args: { p_count: string; p_zero_uncounted?: boolean }; Returns: undefined };
+      close_count: { Args: { p_count: string; p_zero_uncounted?: boolean; p_as_consumption?: boolean }; Returns: undefined };
+      count_preview: {
+        Args: { p_count: string; p_zero_uncounted?: boolean };
+        Returns: Array<{
+          product_id: string;
+          product_name: string;
+          base_unit: string;
+          expected: number;
+          counted: number;
+          diff: number;
+          unit_cost: number;
+          diff_value: number;
+        }>;
+      };
       post_receipt: { Args: { p_receipt: string }; Returns: undefined };
       create_organization: { Args: { p_name: string; p_business_type?: string }; Returns: string };
       catalog_search: {
@@ -506,8 +563,18 @@ export type Database = {
         Returns: Array<{ business_day: string; value: number | null }>;
       };
       stock_summary: {
-        Args: Record<string, never>;
+        Args: { p_location?: string | null };
         Returns: Array<{ total_value: number; below_min_count: number; critical_count: number }>;
+      };
+      send_order: { Args: { p_order: string }; Returns: undefined };
+      cancel_order: { Args: { p_order: string }; Returns: undefined };
+      receive_order: {
+        Args: { p_order: string; p_lines: Json; p_doc_number?: string | null; p_doc_date?: string; p_close?: boolean };
+        Returns: string;
+      };
+      usage_by_business_day: {
+        Args: { p_since: string; p_location?: string | null };
+        Returns: Array<{ business_day: string; value: number | null }>;
       };
     };
     Enums: Record<string, never>;

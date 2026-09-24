@@ -1,6 +1,9 @@
-# Puerta de calidad: se ejecuta en cada push y en cada pull request.
+# Puerta de calidad: se ejecuta en cada push a main y en cada pull request.
 # app: lint, tipos, tests y build. db: aplica todas las migraciones en un Postgres limpio y pasa
 # los tests de permisos/RLS (supabase/tests). Si falla cualquiera de los dos, no se integra.
+#
+# Los fallos se publican como anotaciones: se ven en la pestaña del PR (y por la API) sin iniciar
+# sesión, a diferencia de los registros completos del trabajo.
 name: CI
 
 on:
@@ -22,8 +25,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -37,11 +40,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
       # Solo los servicios que usan las migraciones y los tests (Postgres, Auth, Storage, API).
-      - run: supabase start -x analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,studio,vector
-      - run: supabase test db
-      - run: supabase db lint --level error
+      - name: Base de datos local con todas las migraciones
+        run: supabase start -x analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,studio,vector
+      - name: Tests SQL (pgTAP)
+        run: |
+          set -o pipefail
+          if ! supabase test db 2>&1 | tee pgtap.log; then
+            grep -E "not ok|Failed|ERROR|error|Dubious|No plan" pgtap.log | head -30 | while IFS= read -r line; do
+              echo "::error title=pgTAP::${line}"
+            done
+            { echo '### Tests SQL fallidos'; echo '```'; tail -80 pgtap.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Lint de funciones SQL
+        run: |
+          set -o pipefail
+          if ! supabase db lint --level error 2>&1 | tee lint.log; then
+            head -30 lint.log | while IFS= read -r line; do echo "::error title=db lint::${line}"; done
+            exit 1
+          fi

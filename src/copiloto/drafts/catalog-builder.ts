@@ -9,8 +9,10 @@
 //   · el USUARIO confirma. Si alguna comprobación queda en «revisar», debe marcar «lo he revisado».
 import Decimal from "decimal.js";
 import type { JsonValue, Questions } from "@typesafe-ai/sdk";
-import type { ArchiveDraft, DraftCheck, MinimumDraft, NavigateEvent, NewProductDraft, PriceDraft } from "../contract/index";
-import { baseUnitOf, type Dimension, type NamedRef, type SessionContext } from "../domain";
+import type { ArchiveDraft, DraftCheck, MinimumDraft, NavigateEvent, NewProductDraft, OrderDraft, PriceDraft } from "../contract/index";
+import { baseUnitOf, type Dimension, type NamedRef, type Pack, type Product, type SessionContext } from "../domain";
+import { businessDay, horizon } from "../tools/periods";
+import { computeReorder } from "../tools/tools";
 import type { CatalogPlan, ClarifyPlan } from "../agent/interpret";
 import {
   asksHardDelete,
@@ -97,6 +99,8 @@ export class CatalogDraftBuilder {
         return this.minimum(input);
       case "archivar_producto":
         return this.archive(input);
+      case "preparar_pedido":
+        return this.order(input);
     }
   }
 
@@ -547,6 +551,152 @@ export class CatalogDraftBuilder {
       draft,
       summary: { operation: `set the ${field === "min_qty" ? "minimum" : "target"} stock level of a product in a venue`, product: product.name, venue: location.name, value: described },
       review,
+    };
+  }
+
+  // Pedido ---------------------------------------------------------------------------
+
+  /**
+   * Pedidos a proveedor, uno por proveedor, que se guardan en BORRADOR al confirmar (enviarlos sigue
+   * siendo una decisión humana en /pedidos). Si el mensaje trae cantidades ("3 cajas de coca"), se pide
+   * eso; si no, lo que falta para el periodo con el mismo cálculo que «¿qué me falta?».
+   */
+  private async order({ plan, message, ctx, source, overrides, now }: CatalogBuildInput): Promise<BuildResult> {
+    const locationId = plan.locationId;
+    const location = ctx.locations.find((l) => l.id === locationId);
+    if (!locationId || !location) return { kind: "error", message: "Necesito saber para qué local es el pedido." };
+    const today = businessDay(now, location.timezone, location.dayCutoff);
+    const periodo = plan.periodo ?? "no_indicado";
+    // Sin periodo, un pedido cubre una semana (no los 3 días de la consulta «¿qué me falta?»).
+    const h =
+      periodo === "no_indicado" || periodo === "hoy" || periodo === "ayer" || periodo === "personalizado"
+        ? { days: 7, label: "la próxima semana" }
+        : horizon(periodo, today);
+    const chosenSupplier = ctx.suppliers.find((s) => s.id === overrides.proveedor) ?? mentionedSupplier(message, ctx.suppliers);
+    const purchasePack = (p: Product): Pack | null => p.packs.find((k) => k.isPurchaseDefault) ?? (p.packs.length === 1 ? p.packs[0]! : null);
+    const fmt = (v: Decimal.Value, p: Product) => formatBase(v, p.baseUnit);
+
+    type Wanted = { product: Product; pack: Pack; packs: Decimal; note: string };
+    const wanted: Wanted[] = [];
+    const warnings: string[] = [];
+    const noPack: string[] = [];
+    const noConsumption: string[] = [];
+    const explicit = plan.products.filter((p) => p.amount !== null);
+
+    if (explicit.length > 0) {
+      for (const p of explicit) {
+        const q = resolveQuantity(p, overrides);
+        if ("type" in q) return { kind: "clarify", plan: q };
+        warnings.push(...q.warnings);
+        const pack = q.pack ?? purchasePack(p.product);
+        if (!pack) {
+          noPack.push(p.product.name);
+          continue;
+        }
+        // Si lo pide en ese formato, esa cantidad; si lo pide en ml/g/ud, formatos enteros hacia arriba.
+        const packs = q.pack ? new Decimal(q.input.amount) : q.qtyBase.div(pack.qtyBase).ceil();
+        wanted.push({ product: p.product, pack, packs, note: "cantidad indicada por ti" });
+      }
+    } else {
+      const productIds = plan.products.map((p) => p.product.id);
+      const lines = (
+        await computeReorder(source, { locationIds: [locationId], areaId: null, productIds, period: null, horizonDays: h.days, horizonLabel: h.label, now }, ctx)
+      ).filter((l) => l.suggested.gt(0));
+      for (const l of lines) {
+        const pack = purchasePack(l.product);
+        if (!pack) {
+          noPack.push(l.product.name);
+          continue;
+        }
+        if (l.avg.isZero()) noConsumption.push(l.product.name);
+        const parts = [`quedan ${fmt(l.qty, l.product)}`];
+        if (l.coverage) parts.push(`para ${formatDecimal(l.coverage, 1)} días`);
+        if (l.pendingIn.gt(0)) parts.push(`en camino ${fmt(l.pendingIn, l.product)}`);
+        wanted.push({ product: l.product, pack, packs: l.suggested.div(pack.qtyBase).ceil(), note: parts.join(" · ") });
+      }
+    }
+
+    // Proveedor: el que diga el mensaje para todo el pedido; si no, el del último precio de cada formato.
+    const prices = await source.supplierPrices(wanted.map((w) => w.pack.id));
+    const groups = new Map<string, OrderDraft["orders"][number]>();
+    const noSupplier: string[] = [];
+    const noPrice: string[] = [];
+    for (const w of wanted) {
+      const price = chosenSupplier
+        ? prices.find((p) => p.packId === w.pack.id && p.supplierId === chosenSupplier.id)
+        : prices.find((p) => p.packId === w.pack.id);
+      const supplier = chosenSupplier ?? (price ? { id: price.supplierId, name: price.supplierName } : null);
+      if (!supplier) {
+        noSupplier.push(w.product.name);
+        continue;
+      }
+      if (!price) noPrice.push(w.product.name);
+      const group = groups.get(supplier.id) ?? { supplierId: supplier.id, supplierName: supplier.name, lines: [] };
+      group.lines.push({
+        productId: w.product.id,
+        productName: w.product.name,
+        packId: w.pack.id,
+        packName: w.pack.name,
+        packsQty: w.packs.toString(),
+        packPrice: price ? new Decimal(price.lastPrice).toString() : null,
+        note: w.note,
+      });
+      groups.set(supplier.id, group);
+    }
+    const orders = [...groups.values()];
+
+    if (orders.length === 0) {
+      if (noSupplier.length > 0) {
+        return {
+          kind: "error",
+          message: `No sé a qué proveedor pedir ${noSupplier.join(", ")}. Dime el proveedor (por ejemplo «… a Makro») o añade su precio en la ficha del producto.`,
+        };
+      }
+      if (noPack.length > 0) return { kind: "error", message: `${noPack.join(", ")} no ${noPack.length === 1 ? "tiene" : "tienen"} formato de compra: añádelo en su ficha.` };
+      return {
+        kind: "error",
+        message: `No hace falta pedir nada en ${location.name} para ${h.label}: con el stock, los mínimos y lo que ya está en camino es suficiente.`,
+        navigate: { route: "/pedidos", filters: { locationId }, auto: false },
+      };
+    }
+
+    const checks: DraftCheck[] = [
+      explicit.length > 0
+        ? check("origen", "Cantidades", "ok", "Las que has indicado, en formatos de compra.")
+        : check("origen", "Cálculo", "ok", `Consumo real de las últimas semanas, mínimos y objetivo, descontando lo que ya está en camino, para ${h.label}.`),
+    ];
+    if (noConsumption.length > 0) {
+      checks.push(check("consumo", "Sin consumo", "aviso", `Sin consumo registrado: ${noConsumption.join(", ")}. Se pide solo lo necesario para llegar al mínimo u objetivo.`));
+    }
+    if (noSupplier.length > 0) checks.push(check("proveedor", "Sin proveedor", "aviso", `No se incluyen (no sé a quién pedirlos): ${noSupplier.join(", ")}.`));
+    if (noPack.length > 0) checks.push(check("formato", "Sin formato", "aviso", `No se incluyen (sin formato de compra): ${noPack.join(", ")}.`));
+    if (noPrice.length > 0) checks.push(check("precio", "Sin precio", "aviso", `Sin precio con ese proveedor: ${noPrice.join(", ")}. El total es aproximado.`));
+    if (plan.locationOutcome === "confirmar") warnings.push("Revisa el local.");
+
+    const total = orders
+      .flatMap((o) => o.lines)
+      .reduce((acc, l) => (l.packPrice ? acc.plus(new Decimal(l.packsQty).mul(l.packPrice)) : acc), new Decimal(0));
+    const count = orders.reduce((n, o) => n + o.lines.length, 0);
+    const described = orders.flatMap((o) => o.lines.map((l) => `${formatDecimal(l.packsQty, 2)} × ${l.packName} de ${l.productName} (${o.supplierName})`));
+    const title = `Pedido para ${location.name} (${h.label}): ${count} ${count === 1 ? "producto" : "productos"} a ${orders.map((o) => o.supplierName).join(", ")}${total.gt(0) ? ` · ${formatMoney(total)}` : ""}`;
+    const draft: OrderDraft = {
+      ...draftBase("pedido", title.slice(0, 300), ctx, warnings, now),
+      kind: "pedido",
+      locationId,
+      locationName: location.name,
+      horizonLabel: h.label,
+      orders,
+      checks,
+    };
+    return {
+      kind: "draft",
+      draft,
+      summary: {
+        operation: "prepare purchase orders to suppliers (saved as drafts, not sent)",
+        venue: location.name,
+        period: h.label,
+        lines: described.join("; ").slice(0, 900),
+      },
     };
   }
 

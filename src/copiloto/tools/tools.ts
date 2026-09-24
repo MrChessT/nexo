@@ -57,11 +57,12 @@ export async function computeReorder(source: InventoryDataSource, params: ToolPa
   const products = productMap(ctx);
   const productIds = params.productIds.length > 0 ? params.productIds : undefined;
   const today = dayOf(params.now);
-  const [lps, balances, movements, transfers] = await Promise.all([
+  const [lps, balances, movements, transfers, orders] = await Promise.all([
     source.locationProducts({ locationIds: params.locationIds, productIds }),
     source.balances({ locationIds: params.locationIds, productIds }),
     source.movements({ locationIds: params.locationIds, productIds, since: sinceIso(addDays(today, -CONSUMPTION_WINDOW_DAYS)) }),
     source.transfers({ locationIds: params.locationIds, status: ["in_transit"] }),
+    source.openOrders({ locationIds: params.locationIds }),
   ]);
   const stock = new Map(balances.map((b) => [`${b.locationId}:${b.productId}`, new Decimal(b.qty)]));
   // Salidas que consumen stock del local. Los traspasos enviados no cuentan: son redistribución.
@@ -80,6 +81,13 @@ export async function computeReorder(source: InventoryDataSource, params: ToolPa
       const key = `${t.toLocationId}:${l.productId}`;
       incoming.set(key, (incoming.get(key) ?? new Decimal(0)).plus(l.qtySent));
     }
+  }
+
+  // Lo ya pedido al proveedor (y aún no recibido) también está en camino: no se vuelve a sugerir.
+  for (const o of orders) {
+    if (productIds && !productIds.includes(o.productId)) continue;
+    const key = `${o.locationId}:${o.productId}`;
+    incoming.set(key, (incoming.get(key) ?? new Decimal(0)).plus(o.qtyBase));
   }
 
   const horizonDays = new Decimal(params.horizonDays);

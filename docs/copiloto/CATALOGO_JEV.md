@@ -49,6 +49,14 @@ Ajuste de descripciones medido con Jev real: «añade Ginebra Nordés 70 cl a 18
 
 Evaluación completa (54 frases, 11 nuevas): 94 % correcto, 6 % preguntas de más, **0 borradores equivocados** e intención acertada al 100 %.
 
+## Pedidos desde el chat (24/09/2026)
+
+Nueva operación `preparar_pedido` (catálogo `2026-09-24.3`). El borrador agrupa por proveedor y, al confirmar, crea pedidos en **borrador**; enviarlos sigue siendo una decisión humana en /pedidos. Con cantidades en el mensaje se pide eso; sin ellas, lo que falta para el periodo con `computeReorder` (el mismo cálculo que la pantalla), descontando lo pedido o en camino.
+
+Local en pedidos: la pregunta `local` duda a veces porque la mercancía llega *al* local desde el proveedor («…a Makro para Parador»: `local` 0,62, `local_destino` 0,98). Se probó a añadir a `local` «en un pedido, el local al que va» y mejoraba el pedido (0,64 → 0,99), pero empeoraba los traspasos («del Parador al Vivero» 0,97 → 0,58). Por eso se descartó y, solo en pedidos, se usa la pregunta que esté segura de las dos.
+
+Evaluación completa (59 frases): 92 % correcto, 8 % preguntas de más y **0 borradores equivocados**. «hazme la lista de la compra» ahora pregunta entre consultar y preparar el pedido: es ambiguo de verdad.
+
 ## Decisión de idioma
 
 La documentación de Jev indica que **el inglés es su idioma principal** y que en otros idiomas la precisión es algo menor.

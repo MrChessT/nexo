@@ -37,6 +37,13 @@ export interface OpenCountRaw {
   lines: Array<{ productId: string; qty: string }>;
 }
 
+/** Cantidad aún por recibir de pedidos abiertos (borrador, enviado o parcial), en unidad base. */
+export interface OpenOrderRaw {
+  locationId: string;
+  productId: string;
+  qtyBase: string;
+}
+
 export interface SupplierPriceRaw {
   supplierId: string;
   supplierName: string;
@@ -56,6 +63,7 @@ export interface InventoryDataSource {
   prices(packIds: string[] | null, since: string): Promise<PriceRaw[]>;
   transfers(filter: { locationIds: string[]; status: TransferRaw["status"][] }): Promise<TransferRaw[]>;
   countResults(filter: DataFilter & { since: string }): Promise<CountResultRaw[]>;
+  openOrders(filter: { locationIds: string[] }): Promise<OpenOrderRaw[]>;
 }
 
 // Parámetros y resultados ---------------------------------------------------------

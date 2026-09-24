@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { normalizeText } from "@/lib/format";
 import { formatQuantity, type UnitDimension } from "@/lib/units";
 import { ProductEditor } from "./product-editor";
 import "./productos.css";
@@ -154,10 +155,9 @@ function FacetList({
 }) {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const visible = options
     .filter((o) => o.count > 0 || o.id === value)
-    .filter((o) => !filter || norm(o.name).includes(norm(filter)));
+    .filter((o) => !filter || normalizeText(o.name).includes(normalizeText(filter)));
   const shown = expanded || filter ? visible : visible.slice(0, 8);
   if (options.length === 0) return null;
   return (
@@ -336,7 +336,7 @@ export default function ProductsPage() {
           <ArrowLeft size={16} /> Resumen
         </Link>
         <span className="catalog-title">Catálogo</span>
-        <div className="catalog-user">MC</div>
+        <span />
       </header>
       <div className="catalog-content">
         <div className="catalog-heading">

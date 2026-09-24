@@ -69,7 +69,7 @@ export interface InventoryWriter {
   }): Promise<{ receiptId: string }>;
   postReceipt(receiptId: string): Promise<void>;
   deleteOpenReceipt(receiptId: string): Promise<void>;
-  closeCount(countId: string, zeroUncounted: boolean): Promise<void>;
+  closeCount(countId: string, zeroUncounted: boolean, asConsumption: boolean): Promise<void>;
   setSupplierPrice(args: { supplierId: string; packId: string; price: string }): Promise<void>;
   createProduct(args: {
     orgId: string;
@@ -83,6 +83,13 @@ export interface InventoryWriter {
   }): Promise<{ productId: string }>;
   setLocationLevel(args: { locationId: string; productId: string; field: "min_qty" | "par_qty"; value: string }): Promise<void>;
   archiveProduct(productId: string): Promise<void>;
+  /** Pedido a proveedor en borrador (no se envía: eso es de un encargado desde /pedidos). */
+  createOrder(args: {
+    orgId: string;
+    locationId: string;
+    supplierId: string;
+    lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
+  }): Promise<{ orderId: string }>;
 }
 
 function raise(what: string, error: { message?: string; code?: string }): never {
@@ -164,8 +171,8 @@ export class SupabaseInventoryWriter implements InventoryWriter {
     if (error) raise("goods_receipts.delete", error);
   }
 
-  async closeCount(countId: string, zeroUncounted: boolean): Promise<void> {
-    const { error } = await this.db.rpc("close_count", { p_count: countId, p_zero_uncounted: zeroUncounted });
+  async closeCount(countId: string, zeroUncounted: boolean, asConsumption: boolean): Promise<void> {
+    const { error } = await this.db.rpc("close_count", { p_count: countId, p_zero_uncounted: zeroUncounted, p_as_consumption: asConsumption });
     if (error) raise("close_count", error);
   }
 
@@ -219,6 +226,25 @@ export class SupabaseInventoryWriter implements InventoryWriter {
       .select("product_id");
     if (error) raise("location_products", error);
     if (!data?.length) raise("location_products", { code: "42501", message: "forbidden" });
+  }
+
+  async createOrder(args: Parameters<InventoryWriter["createOrder"]>[0]): Promise<{ orderId: string }> {
+    const header = await this.db
+      .from("purchase_orders")
+      .insert({ org_id: args.orgId, location_id: args.locationId, supplier_id: args.supplierId })
+      .select("id")
+      .single();
+    if (header.error || !header.data) raise("purchase_orders", header.error ?? { code: "42501", message: "forbidden" });
+    const orderId = String(header.data.id);
+    const lines = await this.db
+      .from("purchase_order_lines")
+      .insert(args.lines.map((l) => ({ order_id: orderId, pack_id: l.packId, packs_qty: l.packsQty, pack_price: l.packPrice })));
+    if (lines.error) {
+      // Sin restos: una cabecera sin líneas no sirve.
+      await this.db.from("purchase_orders").delete().eq("id", orderId).eq("status", "draft");
+      raise("purchase_order_lines", lines.error);
+    }
+    return { orderId };
   }
 
   async archiveProduct(productId: string): Promise<void> {

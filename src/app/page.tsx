@@ -1,43 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
+import { euros, localDay } from "@/lib/format";
+import { readLocation, saveLocation } from "@/lib/location-preference";
 import "./dashboard-charts.css";
 import {
   ArrowUpRight,
-  Bell,
   Boxes,
   ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardList,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
-  Plus,
   Search,
-  Settings,
   ShoppingCart,
   SlidersHorizontal,
   Sparkles,
   Truck,
-  Users,
   Warehouse,
   X,
+  XCircle,
 } from "lucide-react";
 
-type NavItem = { label: string; icon: typeof LayoutDashboard; badge?: string };
+// Resumen de inicio: todo lo que se ve sale de la base de datos (con RLS) y se puede filtrar por local.
 
-const navigation: NavItem[] = [
-  { label: "Resumen", icon: LayoutDashboard },
-  { label: "Stock", icon: Boxes, badge: "3" },
-  { label: "Recepciones", icon: Package },
-  { label: "Traspasos", icon: Truck, badge: "2" },
-  { label: "Inventarios", icon: ClipboardList },
-  { label: "Pedidos", icon: ShoppingCart },
-];
+type Location = { id: string; name: string };
+type Identity = { name: string; initials: string; role: string; org: string; locations: Location[] };
 
 type DashboardStockRow = {
   name: string;
@@ -58,6 +53,10 @@ type DashboardActivity = {
 };
 
 type MovementType = "opening" | "purchase" | "consumption" | "waste" | "transfer_out" | "transfer_in" | "count_adjustment" | "manual_adjustment";
+
+type BrowserClient = NonNullable<ReturnType<typeof createClient>>;
+
+const ROLE_LABEL: Record<string, string> = { owner: "Propietario", admin: "Administrador", manager: "Encargado", staff: "Equipo" };
 
 const movementIcon: Record<MovementType, typeof Truck> = {
   purchase: ShoppingCart,
@@ -102,222 +101,326 @@ function formatRelativeTime(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
 }
 
-type BrowserClient = NonNullable<ReturnType<typeof createClient>>;
+function greeting(hour: number) {
+  return hour < 6 ? "Buenas noches" : hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
+}
 
-// Consumo y merma por día de negocio. La función SQL (migración 0008) filtra por fecha antes de
-// agrupar; si aún no está aplicada se usa la vista, que devuelve las mismas filas.
-async function loadConsumption(supabase: BrowserClient, since: string): Promise<Array<{ business_day: string; value: number | null }>> {
-  const { data, error } = await supabase.rpc("consumption_by_business_day", { p_since: since, p_types: ["consumption", "waste"] });
+function initialsOf(name: string) {
+  const parts = name.split(/[\s@._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+/** Abre el asistente (y, si se indica, le envía un mensaje). */
+function askAssistant(message?: string) {
+  window.dispatchEvent(new CustomEvent("copiloto:ask", { detail: message ? { message } : {} }));
+}
+
+async function loadIdentity(supabase: BrowserClient): Promise<Identity | null> {
+  const { data: session } = await supabase.auth.getSession();
+  const user = session.session?.user;
+  const [profile, membership, locations] = await Promise.all([
+    user ? supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle() : Promise.resolve({ data: null }),
+    user ? supabase.from("memberships").select("role, organizations(name)").eq("user_id", user.id).limit(1).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from("locations").select("id, name").eq("active", true).order("name"),
+  ]);
+  const name = profile.data?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
+  const member = membership.data as { role: string; organizations: { name: string } | null } | null;
+  if (user && !member) return null;
+  return {
+    name,
+    initials: initialsOf(name),
+    role: ROLE_LABEL[member?.role ?? ""] ?? "",
+    org: member?.organizations?.name ?? "Tu organización",
+    locations: (locations.data ?? []) as Location[],
+  };
+}
+
+/** Consumo por día de negocio (misma definición que Informes). Si falta la migración 0009, usa la vista. */
+async function loadUsage(supabase: BrowserClient, since: string, locationId: string): Promise<Array<{ business_day: string; value: number | null }>> {
+  const { data, error } = await supabase.rpc("usage_by_business_day", { p_since: since, p_location: locationId || null });
   if (!error) return data ?? [];
-  const { data: fallback } = await supabase
-    .from("v_movements_by_business_day")
-    .select("business_day, value")
-    .in("type", ["consumption", "waste"])
-    .gte("business_day", since);
+  let query = supabase.from("v_movements_by_business_day").select("business_day, value").in("type", ["consumption", "waste"]).gte("business_day", since);
+  if (locationId) query = query.eq("location_id", locationId);
+  const { data: fallback } = await query;
   return (fallback ?? []) as Array<{ business_day: string; value: number | null }>;
 }
 
-type StockSummary = { totalValue: Decimal; attention: number; critical: number };
-
-// Totales sobre TODO el stock visible (no solo las filas que se listan). La función SQL (migración
-// 0008) devuelve una sola fila; si aún no está aplicada se suman las filas en el navegador.
-async function loadStockSummary(supabase: BrowserClient): Promise<StockSummary | null> {
-  const { data, error } = await supabase.rpc("stock_summary");
+/** Totales sobre TODO el stock del local (o de todos). Si falta la migración 0009, suma en el navegador. */
+async function loadSummary(supabase: BrowserClient, locationId: string) {
+  const { data, error } = await supabase.rpc("stock_summary", { p_location: locationId || null });
   const row = data?.[0];
-  if (!error && row) {
-    return { totalValue: new Decimal(String(row.total_value ?? 0)), attention: Number(row.below_min_count), critical: Number(row.critical_count) };
-  }
-  const { data: rows, error: rowsError } = await supabase.from("v_stock_valuation").select("qty, stock_value, below_min");
+  if (!error && row) return { total: new Decimal(String(row.total_value ?? 0)), attention: Number(row.below_min_count), critical: Number(row.critical_count) };
+  let query = supabase.from("v_stock_valuation").select("qty, stock_value, below_min");
+  if (locationId) query = query.eq("location_id", locationId);
+  const { data: rows, error: rowsError } = await query;
   if (rowsError) return null;
-  const all = rows ?? [];
-  const attention = all.filter((r) => r.below_min);
+  const attention = (rows ?? []).filter((r) => r.below_min);
   return {
-    totalValue: all.reduce((total, r) => total.plus(String(r.stock_value ?? 0)), new Decimal(0)),
+    total: (rows ?? []).reduce((acc, r) => acc.plus(String(r.stock_value ?? 0)), new Decimal(0)),
     attention: attention.length,
     critical: attention.filter((r) => r.qty <= 0).length,
   };
 }
 
-export default function Dashboard() {
-  const [active, setActive] = useState("Resumen");
-  const [location, setLocation] = useState("Parador");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [stockRows, setStockRows] = useState<DashboardStockRow[]>([]);
-  const [activity, setActivity] = useState<DashboardActivity[]>([]);
-  const [stockValue, setStockValue] = useState("Sin datos");
-  const [attentionCount, setAttentionCount] = useState("Sin datos");
-  const [criticalCount, setCriticalCount] = useState("Sin datos");
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [consumptionValue, setConsumptionValue] = useState("Sin datos");
-  const [consumptionTrend, setConsumptionTrend] = useState("");
-  const [consumptionBars, setConsumptionBars] = useState<Array<{ label: string; value: number }>>([]);
-  const [rotationValue, setRotationValue] = useState("Sin datos");
+type DashboardData = {
+  stockValue: string;
+  attention: number;
+  critical: number;
+  pendingTransfers: number;
+  stockRows: DashboardStockRow[];
+  activity: DashboardActivity[];
+  consumptionValue: string;
+  consumptionTrend: string;
+  consumptionBars: Array<{ label: string; value: number }>;
+  rotationValue: string;
+};
 
-  useEffect(() => {
-    async function loadDashboard() {
-      const supabase = createClient();
-      if (!supabase) {
-        setDashboardLoading(false);
-        return;
-      }
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - 13);
-      // Las tres consultas son independientes: se lanzan a la vez en lugar de una tras otra.
-      const [stockResult, summary, consumptionRows, movementResult] = await Promise.all([
-        supabase
-          .from("v_stock_valuation")
-          .select("product_name, category_name, base_unit, qty, stock_value, below_min")
-          .order("below_min", { ascending: false })
-          .order("product_name")
-          .limit(4),
-        loadStockSummary(supabase),
-        loadConsumption(supabase, fromDate.toISOString().slice(0, 10)),
-        supabase
-          .from("stock_movements")
-          .select("id, type, occurred_at, products(name), locations(name)")
-          .order("occurred_at", { ascending: false })
-          .limit(6),
-      ]);
-      const { data, error } = stockResult;
-      if (error || !summary) {
-        setDashboardLoading(false);
-        return;
-      }
-      const rows = data ?? [];
-      const totalValue = summary.totalValue;
-      setStockValue(`${totalValue.toFixed(2).replace(".", ",")} €`);
-      setAttentionCount(String(summary.attention));
-      setCriticalCount(String(summary.critical));
-      setStockRows(rows.map((row) => ({
+async function loadDashboard(supabase: BrowserClient, locationId: string): Promise<DashboardData | null> {
+  const days: string[] = [];
+  for (let i = 13; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(localDay(d));
+  }
+  let stockQuery = supabase
+    .from("v_stock_valuation")
+    .select("product_name, category_name, base_unit, qty, stock_value, below_min")
+    .order("below_min", { ascending: false })
+    .order("product_name")
+    .limit(4);
+  let movementQuery = supabase.from("stock_movements").select("id, type, occurred_at, products(name), locations(name)").order("occurred_at", { ascending: false }).limit(6);
+  let transferQuery = supabase.from("transfers").select("id", { count: "exact", head: true }).in("status", ["draft", "in_transit"]);
+  if (locationId) {
+    stockQuery = stockQuery.eq("location_id", locationId);
+    movementQuery = movementQuery.eq("location_id", locationId);
+    transferQuery = transferQuery.or(`from_location_id.eq.${locationId},to_location_id.eq.${locationId}`);
+  }
+
+  // Todo en una sola ronda de peticiones.
+  const [stock, summary, usage, movements, transfers] = await Promise.all([stockQuery, loadSummary(supabase, locationId), loadUsage(supabase, days[0]!, locationId), movementQuery, transferQuery]);
+  if (stock.error || !summary) return null;
+
+  const byDay = new Map<string, number>();
+  for (const row of usage) byDay.set(row.business_day, (byDay.get(row.business_day) ?? 0) + Math.abs(row.value ?? 0));
+  const lastWeek = days.slice(7);
+  const previousWeek = days.slice(0, 7);
+  const lastWeekTotal = lastWeek.reduce((sum, day) => sum + (byDay.get(day) ?? 0), 0);
+  const previousWeekTotal = previousWeek.reduce((sum, day) => sum + (byDay.get(day) ?? 0), 0);
+  const hasConsumption = lastWeekTotal > 0 || previousWeekTotal > 0;
+  const change = previousWeekTotal > 0 ? ((lastWeekTotal - previousWeekTotal) / previousWeekTotal) * 100 : null;
+  const totalNumber = summary.total.toNumber();
+
+  const movementRows = (movements.data ?? []) as unknown as Array<{
+    id: number; type: MovementType; occurred_at: string;
+    products: { name: string } | null; locations: { name: string } | null;
+  }>;
+
+  return {
+    stockValue: euros(summary.total),
+    attention: summary.attention,
+    critical: summary.critical,
+    pendingTransfers: transfers.count ?? 0,
+    stockRows: (stock.data ?? []).map((row) => {
+      const critical = row.qty < 0 || (row.below_min && row.qty <= 0);
+      return {
         name: row.product_name,
         category: row.category_name ?? "Sin categoría",
         amount: `${new Decimal(String(row.qty ?? 0)).toFixed(2)} ${row.base_unit}`,
-        value: `${new Decimal(String(row.stock_value ?? 0)).toFixed(2).replace(".", ",")} €`,
-        status: row.qty < 0 || (row.below_min && row.qty <= 0) ? "critical" : row.below_min ? "low" : "ok",
-        color: row.qty < 0 || (row.below_min && row.qty <= 0) ? "red" : row.below_min ? "orange" : "green",
-      })));
+        value: euros(String(row.stock_value ?? 0)),
+        status: critical ? "critical" : row.below_min ? "low" : "ok",
+        color: critical ? "red" : row.below_min ? "orange" : "green",
+      };
+    }),
+    activity: movementRows.map((m) => ({
+      id: m.id,
+      icon: movementIcon[m.type],
+      title: movementLabel[m.type],
+      detail: `${m.products?.name ?? "Producto"} · ${m.locations?.name ?? "Local"}`,
+      time: formatRelativeTime(m.occurred_at),
+      tone: movementTone[m.type],
+    })),
+    consumptionValue: hasConsumption ? euros(lastWeekTotal.toFixed(2)) : "Sin datos",
+    consumptionTrend: !hasConsumption ? "" : change === null ? "sin semana anterior" : `${change >= 0 ? "+" : ""}${change.toFixed(0)}% vs semana anterior`,
+    consumptionBars: hasConsumption
+      ? lastWeek.map((day) => ({ label: new Date(`${day}T12:00:00`).toLocaleDateString("es-ES", { weekday: "short" }), value: byDay.get(day) ?? 0 }))
+      : [],
+    rotationValue: hasConsumption && totalNumber > 0 ? `${(lastWeekTotal / totalNumber).toFixed(2)}x` : "Sin datos",
+  };
+}
 
-      const byDay = new Map<string, number>();
-      for (const row of consumptionRows) {
-        byDay.set(row.business_day, (byDay.get(row.business_day) ?? 0) + Math.abs(row.value ?? 0));
+export default function Dashboard() {
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [location, setLocation] = useState("");
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [now, setNow] = useState<Date | null>(null);
+  const requestId = useRef(0);
+  const router = useRouter();
+
+  // Identidad y locales una sola vez; el local elegido se recuerda en este navegador.
+  useEffect(() => {
+    async function start() {
+      await Promise.resolve();
+      setNow(new Date());
+      const supabase = createClient();
+      if (!supabase) {
+        setError("Configura las variables de Supabase para cargar el resumen.");
+        setLoading(false);
+        return;
       }
-      const days: string[] = [];
-      for (let i = 13; i >= 0; i -= 1) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        days.push(d.toISOString().slice(0, 10));
+      const loaded = await loadIdentity(supabase);
+      if (!loaded) {
+        setError("Tu usuario aún no tiene acceso a ninguna organización. Pide a un administrador que te dé acceso.");
+        setLoading(false);
+        return;
       }
-      const lastWeek = days.slice(7, 14);
-      const previousWeek = days.slice(0, 7);
-      const lastWeekTotal = lastWeek.reduce((sum, day) => sum + (byDay.get(day) ?? 0), 0);
-      const previousWeekTotal = previousWeek.reduce((sum, day) => sum + (byDay.get(day) ?? 0), 0);
-      const hasConsumption = lastWeekTotal > 0 || previousWeekTotal > 0;
-      if (hasConsumption) {
-        setConsumptionValue(`${lastWeekTotal.toFixed(2).replace(".", ",")} €`);
-        if (previousWeekTotal > 0) {
-          const change = ((lastWeekTotal - previousWeekTotal) / previousWeekTotal) * 100;
-          setConsumptionTrend(`${change >= 0 ? "+" : ""}${change.toFixed(0)}% vs semana anterior`);
-        } else {
-          setConsumptionTrend("sin semana anterior");
-        }
-        setConsumptionBars(
-          lastWeek.map((day) => ({
-            label: new Date(day).toLocaleDateString("es-ES", { weekday: "short" }),
-            value: byDay.get(day) ?? 0,
-          })),
-        );
-        const stockValueNumber = totalValue.toNumber();
-        setRotationValue(stockValueNumber > 0 ? `${(lastWeekTotal / stockValueNumber).toFixed(2)}x` : "Sin datos");
-      }
-      const movements = (movementResult.data ?? []) as unknown as Array<{
-        id: number; type: MovementType; occurred_at: string;
-        products: { name: string } | null; locations: { name: string } | null;
-      }>;
-      setActivity(
-        movements.map((movement) => ({
-          id: movement.id,
-          icon: movementIcon[movement.type],
-          title: movementLabel[movement.type],
-          detail: `${movement.products?.name ?? "Producto"} · ${movement.locations?.name ?? "Local"}`,
-          time: formatRelativeTime(movement.occurred_at),
-          tone: movementTone[movement.type],
-        })),
-      );
-      setDashboardLoading(false);
+      setIdentity(loaded);
+      const stored = readLocation();
+      setLocation(loaded.locations.some((l) => l.id === stored) ? stored : "");
     }
-    void loadDashboard();
+    void start();
   }, []);
+
+  useEffect(() => {
+    if (!identity) return;
+    const id = ++requestId.current;
+    async function run() {
+      await Promise.resolve();
+      setLoading(true);
+      const supabase = createClient();
+      const result = supabase ? await loadDashboard(supabase, location) : null;
+      if (id !== requestId.current) return;
+      setData(result);
+      setError(result ? "" : "No se pudo cargar el resumen. Revisa la conexión e inténtalo de nuevo.");
+      setLoading(false);
+    }
+    void run();
+  }, [identity, location]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+        setMenuOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function changeLocation(id: string) {
+    saveLocation(id);
+    setLocation(id);
+  }
+
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const q = new FormData(event.currentTarget).get("q")?.toString().trim();
+    router.push(q ? `/productos?q=${encodeURIComponent(q)}&estado=all` : "/productos");
+  }
+
+  async function signOut() {
+    await createClient()?.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
+
+  const locationName = identity?.locations.find((l) => l.id === location)?.name;
+  const localQuery = location ? `local=${location}` : "";
+  const withLocal = (path: string) => (localQuery ? `${path}${path.includes("?") ? "&" : "?"}${localQuery}` : path);
+  const value = (text: string | undefined) => (loading && !data ? "..." : text ?? "Sin datos");
+  const firstName = identity?.name.split(" ")[0] ?? "";
+  const today = now ? now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+
+  const navigation: Array<{ label: string; href: string; icon: typeof LayoutDashboard; badge?: number }> = [
+    { label: "Resumen", href: "/", icon: LayoutDashboard },
+    { label: "Stock", href: withLocal("/stock"), icon: Boxes, badge: data?.attention },
+    { label: "Pedidos", href: "/pedidos", icon: ShoppingCart },
+    { label: "Recepciones", href: "/recepciones", icon: Package },
+    { label: "Traspasos", href: "/traspasos", icon: Truck, badge: data?.pendingTransfers },
+    { label: "Inventarios", href: "/inventarios", icon: ClipboardList },
+    { label: "Mermas", href: "/mermas", icon: XCircle },
+  ];
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
+      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div className="brand-row">
           <div className="brand-mark"><Sparkles size={18} strokeWidth={2.5} /></div>
           <span className="brand-name">nexo<span>.</span></span>
-          <button className="icon-button sidebar-close" aria-label="Cerrar menu"><X size={18} /></button>
+          <button className="icon-button sidebar-close" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)}><X size={18} /></button>
         </div>
 
         <div className="workspace-switcher">
-          <div className="venue-avatar">P</div>
-          <div className="workspace-copy"><strong>Parador Eventos</strong><span>4 locales activos</span></div>
-          <ChevronDown size={16} className="muted-icon" />
+          <div className="venue-avatar">{identity?.org[0]?.toUpperCase() ?? "·"}</div>
+          <div className="workspace-copy">
+            <strong>{identity?.org ?? "…"}</strong>
+            <span>{identity ? `${identity.locations.length} ${identity.locations.length === 1 ? "local activo" : "locales activos"}` : ""}</span>
+          </div>
         </div>
 
         <div className="nav-heading">Operativa</div>
-        <nav className="main-nav" aria-label="Navegacion principal">
+        <nav className="main-nav" aria-label="Navegación principal">
           {navigation.map((item) => {
             const Icon = item.icon;
+            const active = item.href === "/";
             return (
-              <Link key={item.label} href={item.label === "Stock" ? "/stock" : item.label === "Recepciones" ? "/recepciones" : item.label === "Traspasos" ? "/traspasos" : item.label === "Inventarios" ? "/inventarios" : "/"} className={`nav-item ${active === item.label ? "active" : ""}`} onClick={() => setActive(item.label)}>
-                <Icon size={18} strokeWidth={active === item.label ? 2.4 : 1.8} />
+              <Link key={item.label} href={item.href} className={`nav-item ${active ? "active" : ""}`} onClick={() => setMenuOpen(false)}>
+                <Icon size={18} strokeWidth={active ? 2.4 : 1.8} />
                 <span>{item.label}</span>
-                {item.badge && <span className="nav-badge">{item.badge}</span>}
+                {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
               </Link>
             );
           })}
         </nav>
 
-        <div className="nav-heading secondary-heading">Gestion</div>
+        <div className="nav-heading secondary-heading">Gestión</div>
         <nav className="main-nav">
           <Link className="nav-item" href="/productos"><Package size={18} /><span>Productos</span></Link>
-          <button className="nav-item" onClick={() => setActive("Proveedores")}><Users size={18} /><span>Proveedores</span></button>
-          <Link className="nav-item" href="/informes"><SlidersHorizontal size={18} /><span>Informes</span></Link>
+          <Link className="nav-item" href="/proveedores"><Truck size={18} /><span>Proveedores</span></Link>
+          <Link className="nav-item" href={withLocal("/informes")}><SlidersHorizontal size={18} /><span>Informes</span></Link>
         </nav>
 
         <div className="sidebar-bottom">
-          <button className="nav-item"><Settings size={18} /><span>Ajustes</span></button>
-          <button className="nav-item"><CircleHelp size={18} /><span>Ayuda</span></button>
+          <button className="nav-item" onClick={() => { setMenuOpen(false); askAssistant("¿Qué puedes hacer?"); }}><CircleHelp size={18} /><span>Ayuda</span></button>
           <div className="user-card">
-            <div className="user-avatar">MC</div>
-            <div className="workspace-copy"><strong>Marina Costa</strong><span>Administradora</span></div>
-            <ChevronRight size={16} className="muted-icon" />
+            <div className="user-avatar">{identity?.initials ?? "·"}</div>
+            <Link className="workspace-copy user-link" href="/cuenta" title="Tu cuenta"><strong>{identity?.name ?? "…"}</strong><span>{identity?.role}</span></Link>
+            <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => void signOut()}><LogOut size={16} /></button>
           </div>
         </div>
       </aside>
 
       <section className="main-area">
         <header className="topbar">
-          <button className="icon-button mobile-menu" aria-label="Abrir menu"><Menu size={20} /></button>
-          <div className="breadcrumb"><span>Parador Eventos</span><ChevronRight size={14} /><strong>Resumen</strong></div>
+          <button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={() => setMenuOpen(true)}><Menu size={20} /></button>
+          <div className="breadcrumb"><span>{identity?.org ?? ""}</span><ChevronRight size={14} /><strong>Resumen</strong></div>
           <div className="top-actions">
-            <button className="search-trigger" onClick={() => setSearchOpen(!searchOpen)}><Search size={17} /><span>Buscar</span><kbd>⌘ K</kbd></button>
-            <button className="icon-button notification-button" aria-label="Notificaciones"><Bell size={19} /><i /></button>
-            <div className="top-avatar">MC</div>
+            <button className="search-trigger" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Buscar producto</span></button>
+            <div className="top-avatar" title={identity?.name}>{identity?.initials ?? "·"}</div>
           </div>
         </header>
 
         <div className="content">
           <div className="page-heading">
             <div>
-              <p className="eyebrow">Martes, 22 de septiembre de 2026</p>
-              <h1>Buenos días, Marina <span>↗</span></h1>
-              <p className="subtitle">Esto es lo que está pasando con tu inventario.</p>
+              <p className="eyebrow">{today.charAt(0).toUpperCase() + today.slice(1)}</p>
+              <h1>{now && firstName ? `${greeting(now.getHours())}, ${firstName}` : "Hola"} <span>↗</span></h1>
+              <p className="subtitle">Esto es lo que está pasando con tu inventario{locationName ? ` en ${locationName}` : ""}.</p>
             </div>
             <div className="heading-actions">
               <div className="location-select">
-                <Warehouse size={17} /><select value={location} onChange={(event) => setLocation(event.target.value)} aria-label="Seleccionar local"><option>Parador</option><option>Pickels</option><option>Vivero</option><option>La Oliva</option><option>Todos los locales</option></select><ChevronDown size={15} /></div>
-              <button className="primary-button"><Plus size={17} /> Nueva accion</button>
+                <Warehouse size={17} />
+                <select value={location} onChange={(event) => changeLocation(event.target.value)} aria-label="Seleccionar local">
+                  <option value="">Todos los locales</option>
+                  {identity?.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <ChevronDown size={15} />
+              </div>
+              <button className="primary-button" onClick={() => askAssistant()}><Sparkles size={17} /> Pedir al asistente</button>
             </div>
           </div>
 
@@ -327,46 +430,111 @@ export default function Dashboard() {
             <Link href="/inventarios"><span className="quick-icon violet"><ClipboardList size={17} /></span><span><b>Contar inventario</b><small>Empezar un conteo</small></span><ChevronRight size={16} /></Link>
           </div>
 
+          {error && <p className="dashboard-error">{error}</p>}
+
           <div className="metric-grid">
             <article className="metric-card featured-card">
-              <div className="metric-top"><span>Valor del stock</span><span className="metric-menu">···</span></div>
-              <strong className="metric-value">{dashboardLoading ? "..." : stockValue}</strong>
-              <div className="metric-footer"><span className="positive">Valoración actual</span><span>sin comparativa</span></div>
+              <div className="metric-top"><span>Valor del stock</span></div>
+              <strong className="metric-value">{value(data?.stockValue)}</strong>
+              <div className="metric-footer"><span className="positive">Valoración actual</span><span>a coste medio</span></div>
             </article>
             <article className="metric-card">
-              <div className="metric-top"><span>Consumo del periodo</span><span className="metric-menu">···</span></div>
-              <strong className="metric-value">{dashboardLoading ? "..." : consumptionValue}</strong>
+              <div className="metric-top"><span>Consumo del periodo</span></div>
+              <strong className="metric-value">{value(data?.consumptionValue)}</strong>
               <div className="metric-footer">
                 <span>Últimos 7 días</span>
-                <span>{consumptionTrend || "sin comparativa"}</span>
+                <span>{data?.consumptionTrend || "sin comparativa"}</span>
               </div>
-              {consumptionBars.length > 0 && (
+              {data && data.consumptionBars.length > 0 && (
                 <div className="real-bars" aria-hidden="true">
-                  {consumptionBars.map((bar, index) => {
-                    const max = Math.max(...consumptionBars.map((b) => b.value), 0.01);
+                  {data.consumptionBars.map((bar, index) => {
+                    const max = Math.max(...data.consumptionBars.map((b) => b.value), 0.01);
                     return <i key={`${bar.label}-${index}`} style={{ height: `${Math.max((bar.value / max) * 100, 4)}%` }} title={`${bar.label}: ${bar.value.toFixed(2)} €`} />;
                   })}
                 </div>
               )}
             </article>
             <article className="metric-card">
-              <div className="metric-top"><span>Rotación</span><span className="metric-menu">···</span></div>
-              <strong className="metric-value">{dashboardLoading ? "..." : rotationValue}</strong>
+              <div className="metric-top"><span>Rotación</span></div>
+              <strong className="metric-value">{value(data?.rotationValue)}</strong>
               <div className="metric-footer"><span>Consumo / valor de stock</span><span>últimos 7 días</span></div>
             </article>
-            <article className="metric-card alert-card"><div className="metric-top"><span>Requieren atención</span><span className="alert-dot" /></div><strong className="metric-value">{dashboardLoading ? "..." : attentionCount} <em>productos</em></strong><div className="metric-footer"><span className="negative">{dashboardLoading ? "..." : criticalCount} críticos</span><span>por debajo del mínimo</span></div></article>
+            <article className="metric-card alert-card">
+              <div className="metric-top"><span>Requieren atención</span>{data && data.attention > 0 && <span className="alert-dot" />}</div>
+              <strong className="metric-value">{value(data ? String(data.attention) : undefined)} <em>productos</em></strong>
+              <div className="metric-footer"><span className={data && data.critical > 0 ? "negative" : undefined}>{value(data ? String(data.critical) : undefined)} sin stock</span><span>por debajo del mínimo</span></div>
+            </article>
           </div>
 
           <div className="section-grid">
-            <section className="panel stock-panel"><div className="panel-header"><div><h2>Stock que requiere atención</h2><p>Valoración actual por producto</p></div><Link href="/stock" className="text-button">Ver todo <ChevronRight size={15} /></Link></div><div className="stock-table"><div className="table-head"><span>Producto</span><span>Existencias</span><span>Valor</span><span>Estado</span></div>{stockRows.length === 0 ? <div className="empty-state">{dashboardLoading ? "Cargando valoración..." : "No hay stock valorado todavía."}</div> : stockRows.map((row, index) => <div className="stock-row" key={`${row.name}-${index}`}><div className="product-name"><span className={`product-dot ${row.color}`} /><span><b>{row.name}</b><small>{row.category}</small></span></div><strong>{row.amount}</strong><span>{row.value}</span><span className={`status ${row.status}`}>{row.status === "ok" ? "En nivel" : row.status === "low" ? "Bajo mínimo" : "Urgente"}</span></div>)}</div></section>
-            <section className="panel activity-panel"><div className="panel-header"><div><h2>Actividad reciente</h2><p>Movimientos del equipo</p></div><button className="icon-button"><SlidersHorizontal size={17} /></button></div><div className="activity-list">{activity.length === 0 ? <div className="empty-state">Todavía no hay actividad conectada.</div> : activity.map((item) => { const Icon = item.icon; return <div className="activity-item" key={item.id}><span className={`activity-icon ${item.tone}`}><Icon size={17} /></span><span className="activity-copy"><b>{item.title}</b><small>{item.detail}</small><time>{item.time}</time></span></div>; })}</div><button className="activity-link">Ver toda la actividad <ChevronRight size={15} /></button></section>
+            <section className="panel stock-panel">
+              <div className="panel-header">
+                <div><h2>Stock que requiere atención</h2><p>Primero lo que está bajo mínimo</p></div>
+                <Link href={withLocal("/stock")} className="text-button">Ver todo <ChevronRight size={15} /></Link>
+              </div>
+              <div className="stock-table">
+                <div className="table-head"><span>Producto</span><span>Existencias</span><span>Valor</span><span>Estado</span></div>
+                {!data || data.stockRows.length === 0 ? (
+                  <div className="empty-state">{loading ? "Cargando valoración..." : "No hay stock valorado todavía."}</div>
+                ) : (
+                  data.stockRows.map((row, index) => (
+                    <div className="stock-row" key={`${row.name}-${index}`}>
+                      <div className="product-name"><span className={`product-dot ${row.color}`} /><span><b>{row.name}</b><small>{row.category}</small></span></div>
+                      <strong>{row.amount}</strong>
+                      <span>{row.value}</span>
+                      <span className={`status ${row.status}`}>{row.status === "ok" ? "En nivel" : row.status === "low" ? "Bajo mínimo" : "Urgente"}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+            <section className="panel activity-panel">
+              <div className="panel-header"><div><h2>Actividad reciente</h2><p>Últimos movimientos de stock</p></div></div>
+              <div className="activity-list">
+                {!data || data.activity.length === 0 ? (
+                  <div className="empty-state">{loading ? "Cargando actividad..." : "Todavía no hay movimientos."}</div>
+                ) : (
+                  data.activity.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div className="activity-item" key={item.id}>
+                        <span className={`activity-icon ${item.tone}`}><Icon size={17} /></span>
+                        <span className="activity-copy"><b>{item.title}</b><small>{item.detail}</small><time>{item.time}</time></span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <Link className="activity-link" href={withLocal("/informes?vista=consumo")}>Ver consumo y mermas <ChevronRight size={15} /></Link>
+            </section>
           </div>
 
-          <section className="order-banner"><div className="banner-icon"><ShoppingCart size={21} /></div><div><strong>Tu próximo pedido está listo</strong><p>Hay 6 productos bajo mínimo que podrías incluir en la próxima compra.</p></div><button className="secondary-button">Revisar sugerencia <ArrowUpRight size={16} /></button></section>
+          {data && data.attention > 0 && (
+            <section className="order-banner">
+              <div className="banner-icon"><ShoppingCart size={21} /></div>
+              <div>
+                <strong>Toca reponer</strong>
+                <p>
+                  {data.attention === 1 ? "Hay 1 producto" : `Hay ${data.attention} productos`} por debajo del mínimo{locationName ? ` en ${locationName}` : ""}.
+                </p>
+              </div>
+              <Link className="secondary-button" href={withLocal("/pedidos?sugerir=1")}>Preparar pedido <ArrowUpRight size={16} /></Link>
+            </section>
+          )}
         </div>
       </section>
-      {searchOpen && <div className="search-overlay" onClick={() => setSearchOpen(false)}><div className="search-dialog" onClick={(event) => event.stopPropagation()}><Search size={19} /><input autoFocus placeholder="Buscar productos, documentos o personas" /><kbd>ESC</kbd><div className="search-hint">Escribe para buscar en todo Parador Eventos</div></div></div>}
-      {menuOpen && <button className="mobile-backdrop" onClick={() => setMenuOpen(false)} aria-label="Cerrar menu" />}
+
+      {searchOpen && (
+        <div className="search-overlay" onClick={() => setSearchOpen(false)}>
+          <form className="search-dialog" onClick={(event) => event.stopPropagation()} onSubmit={search}>
+            <Search size={19} />
+            <input name="q" autoFocus placeholder="Buscar productos por nombre, categoría, SKU o código de barras" />
+            <kbd>ESC</kbd>
+            <div className="search-hint">Pulsa Intro para buscar en el catálogo</div>
+          </form>
+        </div>
+      )}
+      {menuOpen && <button className="mobile-backdrop" onClick={() => setMenuOpen(false)} aria-label="Cerrar menú" />}
     </main>
   );
 }
