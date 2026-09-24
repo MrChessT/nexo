@@ -5,7 +5,8 @@ import Decimal from "decimal.js";
 import type { CountCloseDraft, Draft, ReceiptDraft, Role, TransferDraft, WasteDraft } from "../contract/index";
 import { hasRole, type Pack, type Product, type SessionContext } from "../domain";
 import { formatDecimal, formatMoney, formatStock, toBase, unitReadings } from "../entities/units";
-import type { ActionPlan, CatalogPlan, ClarifyPlan, ResolvedProduct } from "../agent/interpret";
+import type { ActionPlan, CatalogPlan, ClarifyPlan, DocumentPlan, ResolvedProduct } from "../agent/interpret";
+import { DocumentDraftBuilder } from "./document-builder";
 import type { NavigateEvent } from "../contract/index";
 import { CatalogDraftBuilder, type Review } from "./catalog-builder";
 import { label } from "../jev/catalog";
@@ -32,6 +33,8 @@ const REQUIRED_ROLE: Record<Draft["kind"], Role> = {
   archivar: "manager",
   // Un pedido se crea en borrador: cualquiera del local puede prepararlo; enviarlo es de encargado.
   pedido: "staff",
+  // Recibir lo puede hacer cualquiera del local; enviar un pedido o cancelar, un encargado (ver DocumentBuilder).
+  documento: "staff",
 };
 
 const EDITABLE: Record<Draft["kind"], string[]> = {
@@ -44,6 +47,7 @@ const EDITABLE: Record<Draft["kind"], string[]> = {
   minimo: ["newValue", "acknowledged"],
   archivar: ["acknowledged"],
   pedido: ["orders.*.lines.*.packsQty", "acknowledged"],
+  documento: ["acknowledged"],
 };
 
 /** Cabecera común de cualquier borrador (id, rol, caducidad, campos editables). */
@@ -90,9 +94,11 @@ export interface BuildInput {
 
 export class DraftBuilder {
   readonly #catalog = new CatalogDraftBuilder();
+  readonly #documents = new DocumentDraftBuilder();
 
-  async build(input: BuildInput | (Omit<BuildInput, "plan"> & { plan: CatalogPlan })): Promise<BuildResult> {
+  async build(input: BuildInput | (Omit<BuildInput, "plan"> & { plan: CatalogPlan }) | (Omit<BuildInput, "plan"> & { plan: DocumentPlan })): Promise<BuildResult> {
     if (input.plan.type === "catalogo") return this.#catalog.build({ ...input, plan: input.plan, message: input.message ?? "" });
+    if (input.plan.type === "documento") return this.#documents.build({ ...input, plan: input.plan, message: input.message ?? "" });
     const stock = input as BuildInput;
     switch (stock.plan.accion) {
       case "merma":

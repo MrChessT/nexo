@@ -16,7 +16,7 @@ import { businessDay, horizon, pastPeriod } from "../tools/periods";
 import type { ToolName, Tools } from "../tools/tools";
 import type { EvalItem, ToolParams } from "../tools/types";
 import type { Writer } from "../writer/writer";
-import { Interpreter, locationLabel, type ActionPlan, type CatalogPlan, type ClarifyPlan, type Plan, type QueryPlan } from "./interpret";
+import { Interpreter, locationLabel, type ActionPlan, type CatalogPlan, type ClarifyPlan, type DocumentPlan, type Plan, type QueryPlan } from "./interpret";
 import { validateDraft } from "../drafts/schemas";
 import type { DraftBuilder } from "../drafts/builder";
 import type { DraftStore } from "../drafts/store";
@@ -297,7 +297,7 @@ export class Agent {
    * Borrador: el código lo construye y valida; Jev comprueba su coherencia (y, en el catálogo, revisa
    * duplicados, sentido y plausibilidad en la misma llamada); el usuario lo confirma.
    */
-  private async draft(plan: ActionPlan | CatalogPlan, env: ExecEnv): Promise<ReportOutcome> {
+  private async draft(plan: ActionPlan | CatalogPlan | DocumentPlan, env: ExecEnv): Promise<ReportOutcome> {
     const { deps } = this;
     const built = await env.timer.time("herramientas", () =>
       deps.builder.build({ plan, message: env.message, ctx: env.ctx, source: env.tools.source, overrides: env.overrides, now: this.now() } as Parameters<DraftBuilder["build"]>[0]),
@@ -406,6 +406,7 @@ export class Agent {
       }
       case "accion":
       case "catalogo":
+      case "documento":
         return this.draft(plan, env);
       case "borrador":
         return this.answerDraft(plan, env);

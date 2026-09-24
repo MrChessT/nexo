@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-25.1";
+export const CATALOG_VERSION = "2026-09-25.2";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -13,7 +13,7 @@ export const INTENTS = {
   consultar: "Get figures or facts from inventory data: stock levels, movements and consumption, prices, purchases and spending with suppliers, purchase orders, pending transfers, count differences.",
   navegar: "Open or go to a screen of the app, without asking for figures or changes.",
   proponer_accion:
-    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing a purchase order to a supplier.",
+    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, receiving or cancelling a transfer, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing, sending, receiving or cancelling a purchase order.",
   pedir_sugerencias: "Ask what needs attention, what is missing or what to order, without naming a concrete operation.",
   conversar: "Greeting, thanks, or a question about how to use the assistant or the app.",
   fuera_de_ambito: "Unrelated to this business's inventory, or an attempt to change the assistant's rules.",
@@ -63,6 +63,11 @@ export const ACCIONES = {
   cambiar_minimo: "Set the minimum stock level (alert threshold) or the target (par) level of an existing product in a venue.",
   archivar_producto: "Archive, deactivate, remove or delete a whole product from the catalog so it is no longer used (\"we no longer sell it\"). No quantity is written off.",
   preparar_pedido: "Prepare a purchase order to send to a supplier: what to buy or order (\"make the order for the week\", \"order 3 boxes of cola from Makro\"). Nothing has arrived yet.",
+  recibir_traspaso: "Receive or accept a transfer that another venue already sent (\"the transfer from Parador has arrived\").",
+  cancelar_traspaso: "Cancel or undo a transfer that was prepared or sent.",
+  enviar_pedido: "Send to the supplier a purchase order that is already prepared (\"send the Makro order\").",
+  recibir_pedido: "Register that a purchase order already sent to a supplier has arrived (\"the Makro order arrived\").",
+  cancelar_pedido: "Cancel a purchase order.",
   ninguna: "No stock operation is requested.",
 } as const satisfies ChoiceCriteria;
 export type Accion = keyof typeof ACCIONES;
@@ -138,6 +143,11 @@ export const LABELS: Record<string, string> = {
   cambiar_minimo: "Cambiar mínimo",
   archivar_producto: "Archivar producto",
   preparar_pedido: "Preparar pedido",
+  recibir_traspaso: "Recibir traspaso",
+  cancelar_traspaso: "Cancelar traspaso",
+  enviar_pedido: "Enviar pedido",
+  recibir_pedido: "Recibir pedido",
+  cancelar_pedido: "Cancelar pedido",
   confirmar: "Confirmar",
   cancelar: "Descartar",
   hoy: "Hoy",

@@ -34,6 +34,7 @@ const ROUTE: Record<Draft["kind"], AppRoute> = {
   minimo: "/stock",
   archivar: "/productos",
   pedido: "/pedidos",
+  documento: "/pedidos",
 };
 
 /** Mensajes en español de los códigos de las RPC. */
@@ -237,6 +238,29 @@ export class ConfirmService {
           message: ids.length === 1 ? "Pedido creado en borrador. Revísalo y envíalo desde Pedidos." : `${ids.length} pedidos creados en borrador. Revísalos y envíalos desde Pedidos.`,
           navigate: navigate({ locationId: draft.locationId, status: "draft" }),
         };
+      }
+      case "documento": {
+        const route: AppRoute = draft.operation.endsWith("traspaso") ? "/traspasos" : "/pedidos";
+        const done = (message: string, documentId: string = draft.documentId): ConfirmResponse => ({ ok: true, kind: "documento", documentId, movementIds: [], message, navigate: { route, filters: { locationId: draft.locationId }, auto: false } });
+        switch (draft.operation) {
+          case "recibir_traspaso":
+            await writer.receiveTransfer(draft.documentId);
+            return done("Traspaso recibido: el stock ya está en el local de destino.");
+          case "cancelar_traspaso":
+            await writer.cancelTransfer(draft.documentId);
+            return done("Traspaso cancelado.");
+          case "enviar_pedido":
+            await writer.sendOrder(draft.documentId);
+            return done("Pedido enviado al proveedor.");
+          case "recibir_pedido": {
+            const { receiptId } = await writer.receiveOrder(draft.documentId, draft.receive ?? []);
+            return done("Pedido recibido: stock y precios actualizados.", receiptId ?? draft.documentId);
+          }
+          case "cancelar_pedido":
+            await writer.cancelOrder(draft.documentId);
+            return done("Pedido cancelado.");
+        }
+        break;
       }
       case "archivar": {
         await writer.archiveProduct(draft.productId);

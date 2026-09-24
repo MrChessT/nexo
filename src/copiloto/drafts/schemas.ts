@@ -208,6 +208,16 @@ export const OrderDraftSchema = base.extend({
     .max(20),
 });
 
+export const DocumentDraftSchema = base.extend({
+  kind: z.literal("documento"),
+  operation: z.enum(["recibir_traspaso", "cancelar_traspaso", "enviar_pedido", "recibir_pedido", "cancelar_pedido"]),
+  documentId: id,
+  locationId: id,
+  summary: z.string().min(1).max(200),
+  lines: z.array(z.object({ label: z.string().min(1).max(120), qty: z.string().max(80) })).max(40),
+  receive: z.array(z.object({ packId: id, packsQty: positive, packPrice: DecimalString.nullable() })).max(40).optional(),
+});
+
 const SCHEMAS = {
   merma: WasteDraftSchema,
   traspaso: TransferDraftSchema,
@@ -218,6 +228,7 @@ const SCHEMAS = {
   minimo: MinimumDraftSchema,
   archivar: ArchiveDraftSchema,
   pedido: OrderDraftSchema,
+  documento: DocumentDraftSchema,
 } as const;
 
 export function validateDraft<D extends Draft>(draft: D): D {

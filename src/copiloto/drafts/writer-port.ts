@@ -82,6 +82,11 @@ export interface InventoryWriter {
     locationIds: string[];
   }): Promise<{ productId: string }>;
   setLocationLevel(args: { locationId: string; productId: string; field: "min_qty" | "par_qty"; value: string }): Promise<void>;
+  receiveTransfer(transferId: string): Promise<void>;
+  cancelTransfer(transferId: string): Promise<void>;
+  sendOrder(orderId: string): Promise<void>;
+  receiveOrder(orderId: string, lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>): Promise<{ receiptId: string | null }>;
+  cancelOrder(orderId: string): Promise<void>;
   archiveProduct(productId: string): Promise<void>;
   /** Pedido a proveedor en borrador (no se envía: eso es de un encargado desde /pedidos). */
   createOrder(args: {
@@ -131,6 +136,36 @@ export class SupabaseInventoryWriter implements InventoryWriter {
       raise("transfer_lines", lines.error);
     }
     return { transferId };
+  }
+
+  async receiveTransfer(transferId: string): Promise<void> {
+    // Sin líneas: se recibe lo enviado (receive_transfer usa qty_sent por defecto).
+    const { error } = await this.db.rpc("receive_transfer", { p_transfer: transferId, p_lines: [] });
+    if (error) raise("receive_transfer", error);
+  }
+
+  async cancelTransfer(transferId: string): Promise<void> {
+    const { error } = await this.db.rpc("cancel_transfer", { p_transfer: transferId });
+    if (error) raise("cancel_transfer", error);
+  }
+
+  async sendOrder(orderId: string): Promise<void> {
+    const { error } = await this.db.rpc("send_order", { p_order: orderId });
+    if (error) raise("send_order", error);
+  }
+
+  async receiveOrder(orderId: string, lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>): Promise<{ receiptId: string | null }> {
+    const { data, error } = await this.db.rpc("receive_order", {
+      p_order: orderId,
+      p_lines: lines.map((l) => ({ pack_id: l.packId, packs_qty: l.packsQty, ...(l.packPrice ? { pack_price: l.packPrice } : {}) })),
+    });
+    if (error) raise("receive_order", error);
+    return { receiptId: data ? String(data) : null };
+  }
+
+  async cancelOrder(orderId: string): Promise<void> {
+    const { error } = await this.db.rpc("cancel_order", { p_order: orderId });
+    if (error) raise("cancel_order", error);
   }
 
   async sendTransfer(transferId: string): Promise<void> {

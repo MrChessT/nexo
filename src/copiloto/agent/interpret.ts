@@ -71,7 +71,7 @@ export interface NavigatePlan {
 
 export interface ActionPlan {
   type: "accion";
-  accion: Exclude<Accion, "ninguna" | CatalogAccion>;
+  accion: Exclude<Accion, "ninguna" | CatalogAccion | DocumentAccion>;
   locationId: string;
   locationOutcome: GateOutcome;
   toLocationId: string | null;
@@ -100,6 +100,17 @@ export interface CatalogPlan {
   periodo?: Periodo;
 }
 
+/** Operaciones sobre traspasos y pedidos que ya existen. */
+export const DOCUMENT_ACCIONES = ["recibir_traspaso", "cancelar_traspaso", "enviar_pedido", "recibir_pedido", "cancelar_pedido"] as const;
+export type DocumentAccion = (typeof DOCUMENT_ACCIONES)[number];
+
+export interface DocumentPlan {
+  type: "documento";
+  accion: DocumentAccion;
+  /** Locales donde buscar el documento (el nombrado o, si no, todos los del usuario). */
+  locationIds: string[];
+}
+
 /** Respuesta a un borrador pendiente desde el chat («sí, adelante», «cancélalo»). */
 export interface DraftAnswerPlan {
   type: "borrador";
@@ -111,6 +122,7 @@ export type Plan =
   | ClarifyPlan
   | DraftAnswerPlan
   | CatalogPlan
+  | DocumentPlan
   | QueryPlan
   | NavigatePlan
   | ActionPlan
@@ -562,6 +574,15 @@ export class Interpreter {
     return { type: "catalogo", accion, locationId, locationOutcome, products };
   }
 
+  /** Recibir, enviar o cancelar un traspaso o un pedido: el local, si se dice, acota cuál. */
+  private documentAction(accion: DocumentAccion): Plan {
+    const context: ContextKey = `accion:${accion}`;
+    const all = this.ctx.locations.map((l) => l.id);
+    const g = this.gateSlot(context, "local", "local", "Local");
+    const id = g && g.outcome === "actuar" ? this.meta.locationKeys.get(g.choice) : undefined;
+    return { type: "documento", accion, locationIds: id ? [id] : all };
+  }
+
   private action(): Plan {
     const accionAnswer = this.choice("tipo_accion");
     const spec = accionAnswer?.choice === "cierre_inventario" ? this.thresholds.cierre_inventario : this.thresholds.tipo_accion;
@@ -570,7 +591,8 @@ export class Interpreter {
       return this.clarify("tipo_accion", "¿Qué operación quieres registrar?", g?.ranked ?? [], ["ninguna"]);
     }
     if ((CATALOG_ACCIONES as readonly string[]).includes(g.choice)) return this.catalogAction(g.choice as CatalogAccion);
-    const accion = g.choice as Exclude<Accion, "ninguna" | CatalogAccion>;
+    if ((DOCUMENT_ACCIONES as readonly string[]).includes(g.choice)) return this.documentAction(g.choice as DocumentAccion);
+    const accion = g.choice as Exclude<Accion, "ninguna" | CatalogAccion | DocumentAccion>;
     const t = this.thresholds;
     const context: ContextKey = `accion:${accion}`;
 

@@ -47,7 +47,7 @@ export interface OrderRaw {
   sentAt: string | null;
   /** YYYY-MM-DD o null. */
   expectedDate: string | null;
-  lines: Array<{ productId: string; packsQty: string; packPrice: string | null; receivedPacks: string }>;
+  lines: Array<{ productId: string; packsQty: string; packPrice: string | null; receivedPacks: string; packId?: string; packName?: string }>;
 }
 
 /** Recepción contabilizada: lo que se gastó con un proveedor en una fecha. */

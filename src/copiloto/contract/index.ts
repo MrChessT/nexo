@@ -81,6 +81,7 @@ export interface NavigateEvent {
 }
 
 export type ClarifyField =
+  | "documento"
   | "intent"
   | "local"
   | "espacio"
@@ -169,7 +170,7 @@ export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 export interface DraftBase {
   draftId: string;
-  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | CatalogKind;
+  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | "documento" | CatalogKind;
   title: string;
   requiredRole: Role;
   canConfirm: boolean;
@@ -336,7 +337,22 @@ export interface OrderDraft extends DraftBase {
   }>;
 }
 
-export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft;
+/** Recibir, enviar o cancelar un traspaso o un pedido que ya existe. */
+export interface DocumentDraft extends DraftBase {
+  kind: "documento";
+  operation: "recibir_traspaso" | "cancelar_traspaso" | "enviar_pedido" | "recibir_pedido" | "cancelar_pedido";
+  documentId: string;
+  /** Local para enlazar la pantalla al terminar. */
+  locationId: string;
+  /** «Parador → Vivero · enviado hace 3 días», «Makro · Parador · entrega 21/09». */
+  summary: string;
+  /** Líneas para mostrar («Coca-Cola 20 cl: 2 cajas»). */
+  lines: Array<{ label: string; qty: string }>;
+  /** Recibir un pedido: lo pendiente de cada formato, al último precio. */
+  receive?: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
+}
+
+export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft | DocumentDraft;
 
 // Gráficas y análisis -----------------------------------------------------------
 

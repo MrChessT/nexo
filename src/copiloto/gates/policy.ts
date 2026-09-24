@@ -46,6 +46,12 @@ export const POLICIES: Record<ContextKey, ContextPolicy> = {
   "accion:cambiar_minimo": { risk: "escritura", slots: slots(R, I, I, R, O, I, I) },
   "accion:archivar_producto": { risk: "critica", slots: slots(I, I, I, R, I, I, I) },
   "accion:preparar_pedido": { risk: "escritura", slots: slots(R, O, I, O, O, O, I) },
+  // Sobre documentos que ya existen: el local solo filtra cuál (si hay varios, se pregunta).
+  "accion:recibir_traspaso": { risk: "escritura", slots: slots(O, I, I, I, I, I, I) },
+  "accion:cancelar_traspaso": { risk: "critica", slots: slots(O, I, I, I, I, I, I) },
+  "accion:enviar_pedido": { risk: "escritura", slots: slots(O, I, I, I, I, I, I) },
+  "accion:recibir_pedido": { risk: "escritura", slots: slots(O, I, I, I, I, I, I) },
+  "accion:cancelar_pedido": { risk: "critica", slots: slots(O, I, I, I, I, I, I) },
 };
 
 export function need(context: ContextKey, slot: Slot): Need {

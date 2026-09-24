@@ -497,6 +497,19 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
         ))}
       {draft.kind === "pedido" && <p className="copiloto-detail">Se guardan como borrador en Pedidos (pon 0 para quitar una línea). Enviarlos al proveedor lo decides allí.</p>}
 
+      {draft.kind === "documento" && (
+        <>
+          <p className="copiloto-detail">{draft.summary}</p>
+          {draft.lines.length > 0 && (
+            <ul className="copiloto-lines">
+              {draft.lines.map((line, i) => (
+                <li key={`${line.label}-${i}`}>{line.label}: {line.qty}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
       {draft.kind === "archivar" && (
         <p className="copiloto-detail">Dejará de aparecer en recepciones, traspasos, mermas e inventarios. Conserva su historial y puedes restaurarlo desde su ficha.</p>
       )}
