@@ -88,7 +88,7 @@ export default function InformesPage() {
           <ArrowLeft size={16} /> Resumen
         </Link>
         <span className="catalog-title">Informes</span>
-        <div className="catalog-user">MC</div>
+        <span />
       </header>
 
       <div className="informes-content">

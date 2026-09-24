@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowLeft,
-  Bell,
   ChevronDown,
   CirclePlus,
   ClipboardList,
@@ -603,10 +602,7 @@ export function OperationsPage({ kind }: { kind: OperationKind }) {
       <header className="operations-topbar">
         <Link href="/" className="back-link"><ArrowLeft size={16} /> Resumen</Link>
         <span className="operations-brand"><span>NEXO</span> · {titles[kind]}</span>
-        <div className="operations-top-actions">
-          <button aria-label="Notificaciones"><Bell size={17} /></button>
-          <span>MC</span>
-        </div>
+        <span />
       </header>
       <div className="operations-content">
         <div className="operations-heading">

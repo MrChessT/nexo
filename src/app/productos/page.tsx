@@ -336,7 +336,7 @@ export default function ProductsPage() {
           <ArrowLeft size={16} /> Resumen
         </Link>
         <span className="catalog-title">Catálogo</span>
-        <div className="catalog-user">MC</div>
+        <span />
       </header>
       <div className="catalog-content">
         <div className="catalog-heading">

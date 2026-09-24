@@ -3,6 +3,46 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      organizations: {
+        Row: { id: string; name: string; business_type: string; currency: string; created_at: string };
+        Insert: { id?: string; name: string; business_type?: string; currency?: string };
+        Update: Partial<Database["public"]["Tables"]["organizations"]["Insert"]>;
+        Relationships: [];
+      };
+      invitations: {
+        Row: {
+          id: string;
+          org_id: string;
+          email: string;
+          role: "owner" | "admin" | "manager" | "staff";
+          all_locations: boolean;
+          location_ids: string[];
+          invited_by: string | null;
+          created_at: string;
+          accepted_at: string | null;
+        };
+        Insert: {
+          org_id: string;
+          email: string;
+          role?: "owner" | "admin" | "manager" | "staff";
+          all_locations?: boolean;
+          location_ids?: string[];
+        };
+        Update: Partial<Database["public"]["Tables"]["invitations"]["Insert"]>;
+        Relationships: [];
+      };
+      membership_locations: {
+        Row: { org_id: string; user_id: string; location_id: string };
+        Insert: { org_id: string; user_id: string; location_id: string };
+        Update: Partial<Database["public"]["Tables"]["membership_locations"]["Insert"]>;
+        Relationships: [];
+      };
+      profiles: {
+        Row: { user_id: string; full_name: string | null; created_at: string };
+        Insert: { user_id: string; full_name?: string | null };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -506,8 +546,28 @@ export type Database = {
         Returns: Array<{ business_day: string; value: number | null }>;
       };
       stock_summary: {
-        Args: Record<string, never>;
+        Args: { p_location?: string | null };
         Returns: Array<{ total_value: number; below_min_count: number; critical_count: number }>;
+      };
+      accept_invitations: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      org_members: {
+        Args: { p_org: string };
+        Returns: Array<{
+          user_id: string;
+          email: string;
+          full_name: string | null;
+          role: "owner" | "admin" | "manager" | "staff";
+          all_locations: boolean;
+          location_ids: string[];
+          joined_at: string;
+        }>;
+      };
+      usage_by_business_day: {
+        Args: { p_since: string; p_location?: string | null };
+        Returns: Array<{ business_day: string; value: number | null }>;
       };
     };
     Enums: Record<string, never>;

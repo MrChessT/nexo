@@ -1,0 +1,13 @@
+.suppliers-head, .suppliers-row { display: grid; grid-template-columns: minmax(200px, 1.5fr) minmax(160px, 1.3fr) .8fr .7fr; align-items: center; gap: 12px; padding: 0 18px; }
+.suppliers-head { min-height: 39px; color: #a1aca4; background: #fbfcfb; border-bottom: 1px solid #edf1ed; font-size: 10px; }
+.suppliers-row { min-height: 58px; border-bottom: 1px solid #edf1ed; color: #55665b; font-size: 11px; cursor: pointer; transition: background .12s; }
+.suppliers-row:last-child { border-bottom: 0; }
+.suppliers-row:hover { background: #f7faf7; }
+.suppliers-row:focus-visible { outline: 2px solid #2e8064; outline-offset: -2px; }
+.supplier-prices { margin-top: 22px; }
+.supplier-price-row { grid-template-columns: minmax(140px, 1.4fr) minmax(100px, 1fr) 90px 90px; }
+.supplier-price-row a { color: #2e8064; font-weight: 600; text-decoration: none; }
+@media (max-width: 700px) {
+  .suppliers-head, .suppliers-row { grid-template-columns: minmax(150px, 1.4fr) .7fr; padding: 0 12px; }
+  .suppliers-head span:nth-child(2), .suppliers-row > span:nth-child(2), .suppliers-head span:nth-child(4), .suppliers-row > span:nth-child(4) { display: none; }
+}
