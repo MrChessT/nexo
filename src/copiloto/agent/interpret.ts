@@ -202,9 +202,11 @@ export class Interpreter {
   }
 
   private clarify(field: ClarifyField, question: string, ranked: RankedOption[], exclude: string[] = [], labeler: (v: string) => string = label, segmentIndex?: number): ClarifyPlan {
+    // Los locales son pocos: se ofrecen todos (hasta 6); del resto, las 3 opciones más probables.
+    const max = field === "local" || field === "local_destino" ? 6 : 3;
     const options = ranked
       .filter((r) => !exclude.includes(r.option))
-      .slice(0, 3)
+      .slice(0, max)
       .map((r) => ({ id: r.option, label: labeler(r.option), probability: Math.round(r.probability * 100) / 100 }));
     return { type: "clarify", field, question, options, ...(segmentIndex !== undefined ? { segmentIndex } : {}) };
   }

@@ -9,6 +9,7 @@ interface ProductRow {
   name: string;
   dimension: Dimension;
   category: { name: string } | null;
+  notes: string | null;
   packs: Array<{ id: string; name: string; qty_base: string; is_count_default: boolean; is_purchase_default: boolean; active: boolean }>;
 }
 
@@ -32,7 +33,7 @@ export class SupabaseContext implements ContextPort {
       db.from("locations").select("id,name,timezone,day_cutoff").eq("org_id", orgId).eq("active", true).order("name"),
       db
         .from("products")
-        .select("id,name,dimension,category:categories(name),packs:product_packs(id,name,qty_base:qty_base::text,is_count_default,is_purchase_default,active)")
+        .select("id,name,dimension,notes,category:categories(name),packs:product_packs(id,name,qty_base:qty_base::text,is_count_default,is_purchase_default,active)")
         .eq("org_id", orgId)
         .eq("active", true)
         .order("name"),
@@ -58,7 +59,7 @@ export class SupabaseContext implements ContextPort {
 
     const productRows = (products.data ?? []) as unknown as ProductRow[];
     const catalogHash = createHash("sha256")
-      .update(JSON.stringify(productRows.map((p) => [p.id, p.name, p.category?.name ?? null, p.packs.map((k) => [k.id, k.name, k.qty_base])])))
+      .update(JSON.stringify(productRows.map((p) => [p.id, p.name, p.category?.name ?? null, p.notes ?? null, p.packs.map((k) => [k.id, k.name, k.qty_base])])))
       .digest("hex")
       .slice(0, 16);
 
@@ -79,6 +80,7 @@ export class SupabaseContext implements ContextPort {
         dimension: p.dimension,
         baseUnit: baseUnitOf(p.dimension),
         category: p.category?.name ?? null,
+        notes: p.notes ?? null,
         packs: p.packs
           .filter((k) => k.active)
           .map((k) => ({ id: k.id, name: k.name, qtyBase: String(k.qty_base), isCountDefault: k.is_count_default, isPurchaseDefault: k.is_purchase_default })),

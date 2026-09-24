@@ -4,6 +4,7 @@ import type { ClarifyField } from "../contract/index";
 import type { SessionContext } from "../domain";
 import { tokenize } from "../entities/normalize";
 import { canonicalUnit, parseNumber } from "../entities/quantity-parser";
+import { tokenSimilarity } from "../entities/retriever";
 import { packMatchesUnit } from "../entities/units";
 import type { PendingClarify } from "./session";
 
@@ -28,12 +29,19 @@ function isYes(text: string): boolean {
   return words.length > 0 && words.length <= 4 && YES.has(words[0]!);
 }
 
-/** ¿El texto nombra esta opción? Coincidencia completa o la opción entera dentro del texto. */
+/** Palabras que no ayudan a reconocer una opción («el Brugal», «es una merma», «al Vivero»). */
+const FILLERS = new Set(["el", "la", "los", "las", "un", "una", "unos", "unas", "es", "de", "del", "al", "a", "en", "para", "desde", "eso", "esa", "ese", "pues", "mejor", "vale"]);
+
+/**
+ * ¿El texto nombra esta opción? Cada palabra con sentido del texto debe parecerse a alguna palabra
+ * de la opción (admite erratas y tildes: «pickles» → Pickels, «bacardi» → Bacardí). Así «un
+ * traspaso» elige Traspaso, pero «haz un traspaso de 3 larios» no: es una orden nueva.
+ */
 function mentions(text: string, label: string): boolean {
-  const t = ` ${tokenize(text).join(" ")} `;
-  const l = tokenize(label).join(" ");
-  if (l.length < 3) return t.trim() === l;
-  return t.trim() === l || t.includes(` ${l} `);
+  const words = tokenize(text).filter((w) => !FILLERS.has(w));
+  const labelWords = tokenize(label);
+  if (words.length === 0 || labelWords.length === 0) return false;
+  return words.every((w) => labelWords.some((l) => tokenSimilarity(w, l) >= 0.85));
 }
 
 export function readFreeText(pending: PendingClarify, text: string, ctx: SessionContext): FreeTextAnswer {
@@ -58,6 +66,15 @@ export function readFreeText(pending: PendingClarify, text: string, ctx: Session
 
   const named = pending.optionIds.filter((_, i) => mentions(text, labels[i] ?? ""));
   if (named.length === 1) return { kind: "option", optionId: named[0]! };
+
+  // Un producto de la frase original que no estaba entre las opciones mostradas («larios» cuando
+  // se enseñaron las cuatro primeras ginebras).
+  if (pending.field === "producto" && pending.routing) {
+    const segment = pending.routing.meta.segments[pending.segmentIndex ?? 0];
+    const keys = segment ? [...segment.candidates.keys()] : [];
+    const found = keys.filter((k) => mentions(text, k));
+    if (found.length === 1) return { kind: "option", optionId: found[0]! };
+  }
 
   // Un local escrito a mano aunque no estuviera entre las opciones mostradas.
   if (pending.field === "local" || pending.field === "local_destino") {

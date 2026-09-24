@@ -1,0 +1,82 @@
+// Producto: la frase debe poner delante de Jev estos productos (catálogo real de Vivero 55).
+{"kind":"producto","message":"¿cuánta ginebra queda en el Vivero?","expect":["Beefeater","Larios 12","Tanqueray London Dry","Bombay Sapphire","Hendrick's","Gin Mare"],"not":["Coca-Cola"]}
+{"kind":"producto","message":"stock de vodka","expect":["Absolut Blue","Grey Goose","Belvedere","Ketel One"]}
+{"kind":"producto","message":"¿cuánto ron hay en Parador?","expect":["Bacardí Carta Blanca","Brugal Añejo","Havana Club 7 Años","Ron Zacapa 23"]}
+{"kind":"producto","message":"¿qué whisky nos queda?","expect":["Ballantine's Finest","J&B Rare","Johnnie Walker Black Label","Chivas Regal 18"]}
+{"kind":"producto","message":"stock de tequila","expect":["Patrón Silver","Don Julio Blanco"]}
+{"kind":"producto","message":"¿cuánto champán hay?","expect":["Moët & Chandon Brut Impérial","Veuve Clicquot Brut Carte Jaune"]}
+{"kind":"producto","message":"stock de champagne","expect":["Moët & Chandon Brut Impérial","Veuve Clicquot Brut Carte Jaune"]}
+{"kind":"producto","message":"pasa 2 cajas de beefeater al parador","expect":["Beefeater"],"not":["Larios 12"]}
+{"kind":"producto","message":"se han roto 3 botellas de larios","expect":["Larios 12"],"not":["Beefeater"]}
+{"kind":"producto","message":"baja 1 hendricks","expect":["Hendrick's"]}
+{"kind":"producto","message":"quedan 2 jack daniels","expect":["Jack Daniel's Old No. 7"]}
+{"kind":"producto","message":"stock de macallan","expect":["The Macallan 12 Double Cask"]}
+{"kind":"producto","message":"¿cuánto zacapa queda?","expect":["Ron Zacapa 23"]}
+{"kind":"producto","message":"pasa 2 havana 7 al vivero","expect":["Havana Club 7 Años"]}
+{"kind":"producto","message":"stock de bombay","expect":["Bombay Sapphire"]}
+{"kind":"producto","message":"¿cuánto gin mare hay?","expect":["Gin Mare"]}
+{"kind":"producto","message":"se ha roto un moet","expect":["Moët & Chandon Brut Impérial"]}
+{"kind":"producto","message":"stock de veuve","expect":["Veuve Clicquot Brut Carte Jaune","Veuve Clicquot Rosé"]}
+{"kind":"producto","message":"stock de blue label","expect":["Johnnie Walker Blue Label"]}
+{"kind":"producto","message":"stock de nordes","expect":["Nordés Jeroboam"]}
+{"kind":"producto","message":"2 cajas de coca zero","expect":["Coca-Cola Zero"]}
+{"kind":"producto","message":"¿cuántas cocas quedan?","expect":["Coca-Cola","Coca-Cola Zero"]}
+{"kind":"producto","message":"10 red bull al parador","expect":["Red Bull Energy Drink","Red Bull Sugarfree"]}
+{"kind":"producto","message":"han llegado 3 cajas de tónica schweppes","expect":["Schweppes Tónica"]}
+{"kind":"producto","message":"¿cuánta tónica hay?","expect":["Schweppes Tónica","Royal Bliss Tónica"]}
+{"kind":"producto","message":"fanta de naranja","expect":["Fanta Naranja"]}
+{"kind":"producto","message":"stock de aquarius","expect":["Aquarius Limón"]}
+{"kind":"producto","message":"pasa 5 kilos de limones","expect":["Limones"]}
+{"kind":"producto","message":"tira 2 bolsas de hielo picado","expect":["Hielo picado 2 kg"]}
+{"kind":"producto","message":"¿cuánto hielo queda?","expect":["Hielo picado 2 kg","Hielo cubito macizo 2 kg","Hielo cubito macizo 10 kg"]}
+{"kind":"producto","message":"¿cuánta agua queda?","expect":["Agua mineral natural 50 cl"]}
+{"kind":"producto","message":"zumo de piña","expect":["Zumo de piña 1 L"]}
+{"kind":"producto","message":"¿cuánta cerveza queda?","expect":["Heineken barril 30 L","Heineken tercio 33 cl"]}
+{"kind":"producto","message":"pasa un barril de heineken al vivero","expect":["Heineken barril 30 L"]}
+{"kind":"producto","message":"stock de vino blanco","expect":["Pazo de San Mauro Albariño","Juana la Loca Verdejo"]}
+{"kind":"producto","message":"¿cuánto albariño hay?","expect":["Pazo de San Mauro Albariño","Boj 570 Albariño"]}
+{"kind":"producto","message":"¿cuánto vino tinto queda?","expect":["Pierola Crianza","Protos 9 Meses"]}
+{"kind":"producto","message":"stock de rosado","expect":["Muga Rosado","Lalomba Rosado"]}
+{"kind":"producto","message":"¿quedan pajitas?","expect":["Pajitas de papel negras (caja 250)"]}
+{"kind":"producto","message":"stock de servilletas","expect":["Servilletas cóctel negras 20x20 (paq. 100)"]}
+{"kind":"producto","message":"¿cuántas bengalas quedan?","expect":["Bengalas para botella (caja 60)"]}
+{"kind":"producto","message":"stock de jagermeister","expect":[]}
+// Nombres con número: la cifra corta el texto del producto, pero la búsqueda lo encuentra igual.
+{"kind":"producto","message":"pasa 2 monkey 47 al vivero","expect":["Monkey 47 (50 cl)"]}
+{"kind":"producto","message":"se han roto 3 larios 12","expect":["Larios 12"],"not":["Beefeater"]}
+{"kind":"producto","message":"pasa 2 cajas de cepa 21 al vivero","expect":["Cepa 21"]}
+{"kind":"producto","message":"pasa 4 havana 7 al parador","expect":["Havana Club 7 Años"]}
+// Cantidades: segmentos (cantidad, unidad, texto del producto).
+{"kind":"cantidad","message":"pasa 2 cajas y media de coca al vivero","expect":[{"amount":"2.5","unit":"caja","product":"coca"}]}
+{"kind":"cantidad","message":"se han roto 3 larios","expect":[{"amount":"3","unit":null,"product":"larios"}]}
+{"kind":"cantidad","message":"baja una botella de beefeater","expect":[{"amount":"1","unit":"botella","product":"beefeater"}]}
+{"kind":"cantidad","message":"han llegado 12 cajas de coca y 6 de fanta naranja","expect":[{"amount":"12","unit":"caja","product":"coca"},{"amount":"6","unit":null,"product":"fanta naranja"}]}
+{"kind":"cantidad","message":"pasa 1,5 kg de limas al parador","expect":[{"amount":"1.5","unit":"kg","product":"limas"}]}
+{"kind":"cantidad","message":"dos botellas de moet rotas","expect":[{"amount":"2","unit":"botella","product":"moet"}]}
+{"kind":"cantidad","message":"pasa monkey 47 al vivero","expect":[]}
+{"kind":"cantidad","message":"media caja de red bull","expect":[{"amount":"0.5","unit":"caja","product":"red bull"}]}
+{"kind":"cantidad","message":"una docena de limones","expect":[{"amount":"12","unit":"ud","product":"limones"}]}
+// Respuestas escritas a una pregunta del asistente.
+{"kind":"respuesta","field":"cantidad","text":"5","expect":"cantidad:5"}
+{"kind":"respuesta","field":"cantidad","text":"cinco","expect":"cantidad:5"}
+{"kind":"respuesta","field":"cantidad","text":"5 cajas","expect":"cantidad:5 caja"}
+{"kind":"respuesta","field":"cantidad","text":"una caja","expect":"cantidad:1 caja"}
+{"kind":"respuesta","field":"cantidad","text":"media botella","expect":"cantidad:0.5 botella"}
+{"kind":"respuesta","field":"cantidad","text":"no, 4","expect":"cantidad:4"}
+{"kind":"respuesta","field":"cantidad","text":"sí","options":[["si","Sí, 2 botella"]],"expect":"opcion:si"}
+{"kind":"respuesta","field":"cantidad","text":"si, eso es","options":[["si","Sí, 2 botella"]],"expect":"opcion:si"}
+{"kind":"respuesta","field":"local","text":"parador","options":[["Parador","Parador"],["Vivero","Vivero"]],"expect":"opcion:Parador"}
+{"kind":"respuesta","field":"local","text":"del Parador","options":[["Parador","Parador"],["Vivero","Vivero"]],"expect":"opcion:Parador"}
+{"kind":"respuesta","field":"local","text":"en la oliva","options":[["Parador","Parador"],["Vivero","Vivero"]],"expect":"opcion:La Oliva"}
+{"kind":"respuesta","field":"local","text":"pickles","options":[["Parador","Parador"],["Vivero","Vivero"]],"expect":"opcion:Pickels"}
+{"kind":"respuesta","field":"local_destino","text":"al vivero","options":[["Vivero","Vivero"],["Pickels","Pickels"]],"expect":"opcion:Vivero"}
+{"kind":"respuesta","field":"producto","text":"el brugal","options":[["Brugal Añejo","Brugal Añejo"],["Bacardí Carta Blanca","Bacardí Carta Blanca"]],"expect":"opcion:Brugal Añejo"}
+{"kind":"respuesta","field":"producto","text":"bacardi","options":[["Brugal Añejo","Brugal Añejo"],["Bacardí Carta Blanca","Bacardí Carta Blanca"]],"expect":"opcion:Bacardí Carta Blanca"}
+{"kind":"respuesta","field":"producto","text":"el añejo","options":[["Brugal Añejo","Brugal Añejo"],["Brugal 1888","Brugal 1888"]],"expect":"opcion:Brugal Añejo"}
+{"kind":"respuesta","field":"tipo_accion","text":"un traspaso","options":[["merma","Merma"],["traspaso","Traspaso"]],"expect":"opcion:traspaso"}
+{"kind":"respuesta","field":"tipo_accion","text":"es una merma","options":[["merma","Merma"],["traspaso","Traspaso"]],"expect":"opcion:merma"}
+{"kind":"respuesta","field":"tipo_accion","text":"haz un traspaso de 3 larios al vivero","options":[["merma","Merma"],["traspaso","Traspaso"]],"expect":"nuevo"}
+{"kind":"respuesta","field":"producto","text":"el brugal","options":[["Brugal Añejo","Brugal Añejo"],["Brugal 1888","Brugal 1888"]],"expect":"nuevo"}
+{"kind":"respuesta","field":"tipo_accion","text":"¿cuánto ron queda?","options":[["merma","Merma"],["traspaso","Traspaso"]],"expect":"nuevo"}
+{"kind":"respuesta","field":"borrador","text":"sí, adelante","options":[["confirmar","Sí, confírmalo"]],"expect":"opcion:confirmar"}
+{"kind":"respuesta","field":"borrador","text":"no","options":[["confirmar","Sí, confírmalo"]],"expect":"nuevo"}

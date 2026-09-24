@@ -104,7 +104,7 @@ function dot(a: Float32Array, b: Float32Array): number {
 
 export function productDocument(product: Product): string {
   const packs = product.packs.map((p) => p.name).join(", ");
-  return `${product.name}. Categoría: ${product.category ?? "sin categoría"}.${packs ? ` Formatos: ${packs}.` : ""}`;
+  return `${product.name}. Categoría: ${product.category ?? "sin categoría"}.${product.notes ? ` ${product.notes}.` : ""}${packs ? ` Formatos: ${packs}.` : ""}`;
 }
 
 export interface HybridOptions {

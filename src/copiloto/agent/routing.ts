@@ -37,6 +37,7 @@ function optionKey(name: string): string {
 function describe(product: Product): JsonValue {
   return {
     category: product.category,
+    ...(product.notes ? { notes: product.notes } : {}),
     formats: product.packs.map((p) => p.name),
   };
 }

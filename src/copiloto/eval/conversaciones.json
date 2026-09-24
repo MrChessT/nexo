@@ -1,0 +1,67 @@
+[
+  {
+    "nombre": "Traspaso sin cantidad ni unidad",
+    "turnos": [
+      { "usuario": "pasa larios del Parador al Vivero", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "traspaso", "local": "Parador", "local_destino": "Vivero", "producto_0": { "winner": "Larios 12", "p": 0.99 } }, "espera": { "aclaracion": "cantidad" } },
+      { "usuario": "3", "espera": { "aclaracion": "cantidad", "opciones": ["Botella 70 cl", "Caja 6"] } },
+      { "usuario": "cajas", "espera": { "borrador": "traspaso", "titulo": "3 × Caja 6 (12,6 l) de Larios 12" } }
+    ]
+  },
+  {
+    "nombre": "Merma de «ginebra»: hay que decir cuál",
+    "turnos": [
+      { "usuario": "se han roto 2 botellas de ginebra en el Vivero", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "merma", "local": "Vivero", "producto_0": "varios", "cantidad_ok_0": 0.97, "motivo_merma": "rotura" }, "espera": { "aclaracion": "producto", "opciones": ["Beefeater", "Bombay Sapphire"] } },
+      { "usuario": "larios", "espera": { "borrador": "merma", "titulo": "2 × Botella 70 cl (1,4 l) de Larios 12 en Vivero" } }
+    ]
+  },
+  {
+    "nombre": "Sin local: pregunta y se contesta escribiendo",
+    "turnos": [
+      { "usuario": "tira 3 bolsas de hielo picado", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "merma", "producto_0": { "winner": "Hielo picado 2 kg", "p": 0.99 }, "cantidad_ok_0": 0.97 }, "espera": { "aclaracion": "local" } },
+      { "usuario": "en el vivero", "espera": { "borrador": "merma", "titulo": "Hielo picado 2 kg en Vivero" } }
+    ]
+  },
+  {
+    "nombre": "Una orden nueva en mitad de una pregunta",
+    "turnos": [
+      { "usuario": "quita unas cocas", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": { "dist": { "merma": 0.5, "traspaso": 0.4 } } }, "espera": { "aclaracion": "tipo_accion" } },
+      { "usuario": "¿cuánto ron queda en Parador?", "jev": { "intent": "consultar", "intent_alt": "leer", "herramienta": "query_stock", "local": "Parador", "producto_0": "varios" }, "espera": { "consulta": true } }
+    ]
+  },
+  {
+    "nombre": "Cantidad sin unidad en un refresco",
+    "turnos": [
+      { "usuario": "pasa 6 cocas de Parador a Pickels", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "traspaso", "local": "Parador", "local_destino": "Pickels", "producto_0": { "winner": "Coca-Cola", "p": 0.99 }, "cantidad_ok_0": 0.95 }, "espera": { "aclaracion": "cantidad", "opciones": ["Unidades sueltas", "Caja 24"] } },
+      { "boton": "Unidades sueltas", "espera": { "borrador": "traspaso", "titulo": "6 ud de Coca-Cola" } }
+    ]
+  },
+  {
+    "nombre": "Consulta y continuación («¿y en Parador?»)",
+    "turnos": [
+      { "usuario": "¿cuánto vodka queda en el Vivero?", "jev": { "intent": "consultar", "intent_alt": "leer", "herramienta": "query_stock", "local": "Vivero", "producto_0": "varios" }, "espera": { "consulta": true } },
+      { "usuario": "¿y en Parador?", "jev": { "intent": "consultar", "intent_alt": "leer", "local": "Parador", "seguimiento": 0.85 }, "espera": { "consulta": true, "texto": "Sigo con" } }
+    ]
+  },
+  {
+    "nombre": "Confirmar por chat y seguir con otra merma",
+    "turnos": [
+      { "usuario": "baja 2 botellas de beefeater rotas en el Vivero", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "merma", "local": "Vivero", "producto_0": { "winner": "Beefeater", "p": 0.99 }, "cantidad_ok_0": 0.97, "motivo_merma": "rotura" }, "espera": { "borrador": "merma", "titulo": "Beefeater" } },
+      { "usuario": "sí, adelante", "jev": { "borrador": "confirmar" }, "espera": { "resuelto": "confirmado" } },
+      { "usuario": "se ha roto otra de larios en el Vivero", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "merma", "local": "Vivero", "producto_0": { "winner": "Larios 12", "p": 0.99 } }, "espera": { "aclaracion": "cantidad" } },
+      { "usuario": "1 botella", "espera": { "borrador": "merma", "titulo": "1 × Botella 70 cl (700 ml) de Larios 12" } }
+    ]
+  },
+  {
+    "nombre": "Recepción con precio",
+    "turnos": [
+      { "usuario": "han llegado 5 cajas de coca zero a 18 € en Parador", "jev": { "intent": "proponer_accion", "intent_alt": "cambiar", "tipo_accion": "recepcion", "local": "Parador", "producto_0": { "winner": "Coca-Cola Zero", "p": 0.99 }, "cantidad_ok_0": 0.95 }, "espera": { "borrador": "recepcion", "titulo": "5 × Caja 24 de Coca-Cola Zero" } }
+    ]
+  },
+  {
+    "nombre": "Ir a una pantalla y charlar",
+    "turnos": [
+      { "usuario": "llévame a mermas", "jev": { "intent": "navegar", "intent_alt": "leer", "destino": "/mermas" }, "espera": { "navegar": "/mermas" } },
+      { "usuario": "gracias!", "jev": { "intent": "conversar", "intent_alt": "ninguno" }, "espera": {} }
+    ]
+  }
+]

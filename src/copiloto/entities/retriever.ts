@@ -32,23 +32,37 @@ function commonPrefix(a: string, b: string): number {
 }
 
 /** Parecido entre una palabra del mensaje y una del nombre, de 0 a 1. */
-function tokenSimilarity(q: string, n: string): number {
+export function tokenSimilarity(q: string, n: string): number {
   if (q === n) return 1;
   if (/^\d+$/.test(q) || /^\d+$/.test(n)) return 0;
   const prefix = commonPrefix(q, n);
-  if (prefix >= 4 || (prefix >= 3 && Math.min(q.length, n.length) <= 4)) return 0.85;
+  // Palabras cortas: solo si una es el principio de la otra («ron» → «rones»), no «coca» → «cóctel».
+  if (prefix >= 4 || (prefix >= 3 && prefix === Math.min(q.length, n.length))) return 0.85;
   const sim = jaccard(trigrams(q), trigrams(n));
   return sim >= 0.35 ? sim * 0.8 : 0;
 }
 
-export function lexicalScore(query: string, product: Product): number {
+/** Palabras de las notas que no distinguen un producto de otro (formatos, «carta»…). */
+const NOTE_NOISE = new Set(["carta", "botella", "botellas", "caja", "cajas", "lata", "vidrio", "pet", "brik", "bolsa", "saco", "unidad", "kg", "cl", "l", "ml", "g", "basica", "premium", "ultrapremium", "reserva", "iva"]);
+
+/** Lo que aportan las notas (tipo «Ginebra», marca, nombre en carta) pesa algo menos que el nombre. */
+const NOTES_WEIGHT = 0.9;
+
+/**
+ * Parecido entre la consulta y un producto: nombre y categoría y, salvo que se pida lo contrario,
+ * también las notas. En el catálogo real el tipo de bebida («Ginebra», «Vodka») solo está en las
+ * notas: sin ellas «¿cuánta ginebra queda?» no encuentra la Beefeater.
+ */
+export function lexicalScore(query: string, product: Product, options: { notes?: boolean } = {}): number {
   const qTokens = tokenize(query).filter((t) => t.length >= 2 && !STOPWORDS.has(t));
   if (qTokens.length === 0) return 0;
   const nameTokens = tokenize(`${product.name} ${product.category ?? ""}`);
+  const noteTokens = options.notes === false ? [] : tokenize(product.notes ?? "").filter((t) => !NOTE_NOISE.has(t) && !/^\d+$/.test(t));
   let score = 0;
   for (const q of qTokens) {
     let best = 0;
     for (const n of nameTokens) best = Math.max(best, tokenSimilarity(q, n));
+    for (const n of noteTokens) best = Math.max(best, tokenSimilarity(q, n) * NOTES_WEIGHT);
     score += best;
   }
   return score;

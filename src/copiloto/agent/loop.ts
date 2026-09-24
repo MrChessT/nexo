@@ -28,6 +28,7 @@ import type { Draft } from "../contract/index";
 import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
 import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
+import { tokenize } from "../entities/normalize";
 
 /** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
 export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
@@ -385,8 +386,10 @@ export class Agent {
     switch (plan.type) {
       case "clarify":
         return this.clarify(plan, env);
-      case "conversar":
-        return { kind: "conversacion" };
+      case "conversar": {
+        const charla = smallTalk(env.message);
+        return charla ? { kind: "conversacion", charla } : { kind: "conversacion" };
+      }
       case "fuera_de_ambito":
         return { kind: "fuera_de_ambito" };
       case "bloqueado":
@@ -536,6 +539,17 @@ function quantityOverrides(pending: PendingClarify, typed: { amount: string; uni
   void _pack;
   void _unit;
   return { ...rest, [`cantidad_${i}`]: typed.amount, ...(typed.unit ? { [`unidad_texto_${i}`]: typed.unit } : {}) };
+}
+
+/** Saludo, agradecimiento o despedida corta («gracias!», «buenas», «hasta luego»). */
+export function smallTalk(message: string): "hola" | "gracias" | "adios" | undefined {
+  const words = tokenize(message);
+  if (words.length === 0 || words.length > 5) return undefined;
+  const text = words.join(" ");
+  if (/^(muchas |mil )?gracias\b|^(genial|perfecto|vale|ok|estupendo)( muchas)? gracias\b|^thanks?\b/.test(text)) return "gracias";
+  if (/^(adios|hasta luego|hasta manana|chao|nos vemos|bye)\b/.test(text)) return "adios";
+  if (/^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ey)\b/.test(text)) return "hola";
+  return undefined;
 }
 
 function daysInclusive(from: string, to: string): number {
