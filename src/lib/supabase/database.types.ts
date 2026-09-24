@@ -9,6 +9,38 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["organizations"]["Insert"]>;
         Relationships: [];
       };
+      purchase_orders: {
+        Row: {
+          id: string;
+          org_id: string;
+          location_id: string;
+          supplier_id: string;
+          status: "draft" | "sent" | "partial" | "received" | "cancelled";
+          note: string | null;
+          expected_date: string | null;
+          created_by: string | null;
+          created_at: string;
+          sent_by: string | null;
+          sent_at: string | null;
+          closed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          location_id: string;
+          supplier_id: string;
+          note?: string | null;
+          expected_date?: string | null;
+        };
+        Update: { supplier_id?: string; note?: string | null; expected_date?: string | null };
+        Relationships: [];
+      };
+      purchase_order_lines: {
+        Row: { id: string; order_id: string; pack_id: string; packs_qty: number; pack_price: number | null; received_packs: number };
+        Insert: { id?: string; order_id: string; pack_id: string; packs_qty: number; pack_price?: number | null };
+        Update: { packs_qty?: number; pack_price?: number | null };
+        Relationships: [];
+      };
       invitations: {
         Row: {
           id: string;
@@ -561,6 +593,12 @@ export type Database = {
       stock_summary: {
         Args: { p_location?: string | null };
         Returns: Array<{ total_value: number; below_min_count: number; critical_count: number }>;
+      };
+      send_order: { Args: { p_order: string }; Returns: undefined };
+      cancel_order: { Args: { p_order: string }; Returns: undefined };
+      receive_order: {
+        Args: { p_order: string; p_lines: Json; p_doc_number?: string | null; p_doc_date?: string; p_close?: boolean };
+        Returns: string;
       };
       accept_invitations: {
         Args: Record<string, never>;

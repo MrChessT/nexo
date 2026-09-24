@@ -42,6 +42,23 @@ Los tests de `src/lib` cubren formulas sin conversiones de cantidades a `number`
 - Las cantidades se guardan en unidad base y los decimales se calculan con `decimal.js`.
 - Los datos de prueba se importan al modelo canonico, nunca mediante tablas paralelas.
 
+## Migraciones
+
+Se aplican en orden. En el proyecto real se pegan en Supabase → SQL Editor; el CI las aplica todas sobre una base limpia y pasa `supabase/tests`.
+
+| Migración | Qué añade |
+| --- | --- |
+| 0001–0004 | Núcleo: organizaciones, catálogo, stock, documentos, RLS, saldo por espacio |
+| 0005–0006 | Asistente: auditoría, sesiones y borradores |
+| 0007 | Catálogo con filtros en servidor (`catalog_search`) |
+| 0008 | Rendimiento: RLS evaluada una vez por consulta, índices, `stock_summary` |
+| 0009 | Resumen filtrable por local y consumo con una sola definición |
+| 0010 | Equipo: invitaciones por email y protección de propietarios |
+| 0011 | Consumo real por inventario (`close_count` con `p_as_consumption`, `count_preview`) |
+| 0012 | Pedidos a proveedor: borrador, envío, recepción parcial o total |
+
+Las funciones de la app que dependen de una migración nueva degradan con un aviso si aún no está aplicada.
+
 ## Asistente (Nexo Copiloto)
 
 El asistente de chat (Ctrl+K o botón «Asistente») y la página **Informes** forman parte de esta app: mismo repositorio y mismo despliegue.

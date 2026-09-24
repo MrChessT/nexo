@@ -1,5 +1,6 @@
 // Fuente de datos real: consultas tipadas de SOLO LECTURA con el cliente del usuario (RLS activo).
 // Las cifras se piden como texto (`col::text`) para no pasar nunca por number.
+import Decimal from "decimal.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AreaBalanceRaw,
@@ -10,6 +11,7 @@ import type {
   LocationProductRaw,
   MovementRaw,
   OpenCountRaw,
+  OpenOrderRaw,
   PriceRaw,
   SupplierPriceRaw,
   TransferRaw,
@@ -168,6 +170,31 @@ export class SupabaseDataSource implements InventoryDataSource {
       sentAt: strOrNull(r.sent_at),
       lines: ((r.lines as Row[] | null) ?? []).map((l) => ({ productId: String(l.product_id), qtySent: str(l.qty_sent), unitCost: strOrNull(l.unit_cost) })),
     }));
+  }
+
+  /**
+   * Lo pendiente de recibir de pedidos abiertos. Si la tabla aún no existe (migración 0012 sin
+   * aplicar) devuelve vacío: la reposición sigue funcionando, solo sin descontar pedidos.
+   */
+  async openOrders(filter: { locationIds: string[] }): Promise<OpenOrderRaw[]> {
+    if (filter.locationIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("purchase_order_lines")
+      .select("packs_qty:packs_qty::text,received_packs:received_packs::text,pack:product_packs(product_id,qty_base:qty_base::text),order:purchase_orders!inner(location_id,status)")
+      .in("order.location_id", filter.locationIds)
+      .in("order.status", ["draft", "sent", "partial"]);
+    if (error) return [];
+    const out: OpenOrderRaw[] = [];
+    for (const r of (data ?? []) as Row[]) {
+      const pack = r.pack as { product_id: string; qty_base: string } | null;
+      const order = r.order as { location_id: string } | null;
+      if (!pack || !order) continue;
+      const pendingPacks = new Decimal(str(r.packs_qty)).minus(str(r.received_packs));
+      if (pendingPacks.lte(0)) continue;
+      // Cadena decimal exacta: packs pendientes × contenido del formato.
+      out.push({ locationId: order.location_id, productId: pack.product_id, qtyBase: pendingPacks.mul(pack.qty_base).toString() });
+    }
+    return out;
   }
 
   async countResults(filter: DataFilter & { since: string }): Promise<CountResultRaw[]> {

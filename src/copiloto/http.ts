@@ -18,7 +18,7 @@ import { SupabaseContext } from "./supabase/context";
 import { SupabaseDataSource } from "./supabase/data-source";
 import { memoizeSource } from "./supabase/memo-source";
 import { SupabaseDraftPersistence, SupabaseSessionPersistence } from "./supabase/state";
-import { InventoryTools } from "./tools/tools";
+import { computeReorder, InventoryTools } from "./tools/tools";
 
 export interface RequestUser extends AuthUser {
   orgId: string;
@@ -176,6 +176,72 @@ async function analytics(url: URL, user: RequestUser): Promise<Response> {
   return json({ ...result, locations: ctx.locations.map((l) => ({ id: l.id, name: l.name })) });
 }
 
+const ReorderQuery = z.object({
+  locationId: z.uuid(),
+  dias: z.coerce
+    .number()
+    .int()
+    .refine((d) => [3, 7, 14].includes(d))
+    .default(7),
+});
+
+/**
+ * Sugerencia de pedido para un local: mismo cálculo que «¿qué me falta?» (consumo real, mínimos,
+ * objetivo y lo que ya está en camino), convertido a formatos de compra con el último proveedor y precio.
+ */
+async function reorder(url: URL, user: RequestUser): Promise<Response> {
+  const rt = runtime();
+  const blocked = limited(rt.limiters.analytics, `reorder:${user.userId}`);
+  if (blocked) return blocked;
+  const parsed = ReorderQuery.safeParse(Object.fromEntries(url.searchParams));
+  if (!parsed.success) return fail(400, { code: "invalid_request", message: "Petición no válida", retryable: false });
+  const ctx = await loadContext(user);
+  if (!ctx.locations.some((l) => l.id === parsed.data.locationId)) {
+    return fail(403, { code: "forbidden", message: "No tienes acceso a ese local", retryable: false });
+  }
+  const { source } = scopeFor(user).tools;
+  const days = parsed.data.dias;
+  const lines = (
+    await computeReorder(
+      source,
+      { locationIds: [parsed.data.locationId], areaId: null, productIds: [], period: null, horizonDays: days, horizonLabel: `${days} días`, now: new Date() },
+      ctx,
+    )
+  ).filter((l) => l.suggested.gt(0));
+
+  const packOf = (p: (typeof lines)[number]["product"]) => p.packs.find((k) => k.isPurchaseDefault) ?? (p.packs.length === 1 ? p.packs[0]! : null);
+  const packIds = lines.map((l) => packOf(l.product)?.id).filter((id): id is string => !!id);
+  // supplierPrices viene ordenado por fecha: el primero de cada formato es el último precio.
+  const latest = new Map<string, Awaited<ReturnType<typeof source.supplierPrices>>[number]>();
+  for (const price of await source.supplierPrices(packIds)) if (!latest.has(price.packId)) latest.set(price.packId, price);
+
+  return json({
+    locationId: parsed.data.locationId,
+    days,
+    lines: lines.map((l) => {
+      const pack = packOf(l.product);
+      const price = pack ? latest.get(pack.id) : undefined;
+      return {
+        productId: l.product.id,
+        productName: l.product.name,
+        baseUnit: l.product.baseUnit,
+        stock: l.qty.toString(),
+        min: l.min.toString(),
+        par: l.par.toString(),
+        pendingIn: l.pendingIn.toString(),
+        avgDaily: l.avg.toDecimalPlaces(4).toString(),
+        coverageDays: l.coverage ? l.coverage.toDecimalPlaces(1).toString() : null,
+        suggestedBase: l.suggested.toString(),
+        pack: pack ? { id: pack.id, name: pack.name, qtyBase: pack.qtyBase } : null,
+        // Siempre formatos enteros, redondeando hacia arriba.
+        packs: pack ? l.suggested.div(pack.qtyBase).ceil().toString() : null,
+        supplier: price ? { id: price.supplierId, name: price.supplierName } : null,
+        price: price?.lastPrice ?? null,
+      };
+    }),
+  });
+}
+
 async function health(): Promise<Response> {
   const rt = runtime();
   const [jev, writerOk, embedOk, supabaseOk] = await Promise.all([
@@ -209,6 +275,8 @@ export async function handleCopiloto(route: string, request: Request, user: Requ
         return await suggestions(url, user);
       case "GET analytics":
         return await analytics(url, user);
+      case "GET reorder":
+        return await reorder(url, user);
       case "GET health":
         return await health();
       default:

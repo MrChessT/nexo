@@ -371,6 +371,7 @@ export default function Dashboard() {
   const navigation: Array<{ label: string; href: string; icon: typeof LayoutDashboard; badge?: number }> = [
     { label: "Resumen", href: "/", icon: LayoutDashboard },
     { label: "Stock", href: withLocal("/stock"), icon: Boxes, badge: data?.attention },
+    { label: "Pedidos", href: "/pedidos", icon: ShoppingCart },
     { label: "Recepciones", href: "/recepciones", icon: Package },
     { label: "Traspasos", href: "/traspasos", icon: Truck, badge: data?.pendingTransfers },
     { label: "Inventarios", href: "/inventarios", icon: ClipboardList },
@@ -546,12 +547,12 @@ export default function Dashboard() {
             <section className="order-banner">
               <div className="banner-icon"><ShoppingCart size={21} /></div>
               <div>
-                <strong>Revisa la reposición</strong>
+                <strong>Toca reponer</strong>
                 <p>
                   {data.attention === 1 ? "Hay 1 producto" : `Hay ${data.attention} productos`} por debajo del mínimo{locationName ? ` en ${locationName}` : ""}.
                 </p>
               </div>
-              <Link className="secondary-button" href={withLocal("/informes?vista=reposicion")}>Ver qué reponer <ArrowUpRight size={16} /></Link>
+              <Link className="secondary-button" href={withLocal("/pedidos?sugerir=1")}>Preparar pedido <ArrowUpRight size={16} /></Link>
             </section>
           )}
         </div>
