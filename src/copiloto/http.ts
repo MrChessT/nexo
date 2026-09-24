@@ -18,6 +18,7 @@ import { DataError, pingSupabase, userClient } from "./supabase/client";
 import { SupabaseContext } from "./supabase/context";
 import { SupabaseDataSource } from "./supabase/data-source";
 import { memoizeSource } from "./supabase/memo-source";
+import { cachedSource, invalidateBusinessCache } from "./supabase/business-cache";
 import { SupabaseDraftPersistence, SupabaseHabitsPersistence, SupabaseSessionPersistence } from "./supabase/state";
 import { HabitsStore } from "./agent/habits";
 import { computeReorder, InventoryTools } from "./tools/tools";
@@ -42,8 +43,8 @@ function scopeFor(user: RequestUser) {
   const db = userClient(rt.supabase, user.token);
   return {
     db,
-    // Lecturas repetidas dentro de la misma petición (herramienta + gráfica, KPIs + gráficas) se hacen una vez.
-    tools: new InventoryTools(memoizeSource(new SupabaseDataSource(db))),
+    // Dentro de la petición, cada lectura una vez; entre mensajes, los históricos durante un minuto.
+    tools: new InventoryTools(memoizeSource(cachedSource(new SupabaseDataSource(db), user))),
     audit: new CompositeAuditSink([new ConsoleAuditSink(), new SupabaseAuditSink(db)]),
     sessions: new SessionStore(new SupabaseSessionPersistence(db)),
     drafts: new DraftStore(new SupabaseDraftPersistence(db)),
@@ -97,6 +98,7 @@ async function chat(request: Request, user: RequestUser): Promise<Response> {
             confirmDraft: async (draftId) => {
               const fresh = await loadContext(user, true);
               const result = await rt.confirm.confirm({ orgId: user.orgId, draftId, idempotencyKey: randomUUID() }, fresh, scope.writer, scope.audit, scope.drafts);
+              if (result.ok) invalidateBusinessCache(user.orgId);
               if (result.ok && (CATALOG_KINDS as readonly string[]).includes(result.kind)) rt.contexts.delete(`${user.userId}:${user.orgId}`);
               return result;
             },
@@ -128,6 +130,8 @@ async function confirm(request: Request, user: RequestUser): Promise<Response> {
   const ctx = await loadContext(user, true);
   const scope = scopeFor(user);
   const result = await rt.confirm.confirm(parsed.data, ctx, scope.writer, scope.audit, scope.drafts);
+  // Lo escrito debe verse en la siguiente consulta: fuera la caché del negocio de la organización.
+  if (result.ok) invalidateBusinessCache(user.orgId);
   // El catálogo ha cambiado (producto nuevo, archivado…): el siguiente mensaje debe verlo.
   if (result.ok && (CATALOG_KINDS as readonly string[]).includes(result.kind)) rt.contexts.delete(`${user.userId}:${user.orgId}`);
   const status = result.ok ? 200 : result.code === "forbidden" ? 403 : result.code === "draft_not_found" || result.code === "draft_expired" ? 404 : 422;
