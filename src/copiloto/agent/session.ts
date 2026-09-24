@@ -3,6 +3,7 @@ import type { AppRoute, ClarifyField } from "../contract/index";
 import type { Product } from "../domain";
 import type { JevResult } from "../jev/client";
 import type { RoutingMeta } from "./routing";
+import type { FollowUp } from "./followups";
 
 export interface Turn {
   role: "user" | "assistant";
@@ -62,6 +63,8 @@ export interface Session {
   turns: Turn[];
   clarifies: Map<string, PendingClarify>;
   focus?: Focus;
+  /** Botones de seguimiento de las últimas respuestas (id → consulta ya resuelta). */
+  followUps?: Array<FollowUp>;
 }
 
 /** Forma JSON de una sesión (los Map se guardan como pares). */
@@ -69,6 +72,7 @@ export interface SerializedSession {
   userId: string;
   turns: Turn[];
   focus?: Focus;
+  followUps?: Array<FollowUp>;
   clarifies: Array<[string, SerializedClarify]>;
 }
 
@@ -92,6 +96,8 @@ export interface SessionPersistence {
 
 const MAX_TURNS = 6;
 const MAX_CLARIFIES = 5;
+/** Botones guardados: los de las últimas respuestas (los antiguos siguen siendo pulsables un rato). */
+const MAX_FOLLOWUPS = 16;
 const TTL_MS = 2 * 60 * 60 * 1000;
 
 export function serializeSession(session: Session): SerializedSession {
@@ -99,6 +105,7 @@ export function serializeSession(session: Session): SerializedSession {
     userId: session.userId,
     turns: session.turns,
     ...(session.focus ? { focus: session.focus } : {}),
+    ...(session.followUps?.length ? { followUps: session.followUps } : {}),
     clarifies: [...session.clarifies.entries()].map(([id, c]) => {
       const { routing, ...rest } = c;
       if (!routing) return [id, rest];
@@ -126,6 +133,7 @@ export function deserializeSession(data: SerializedSession): Session {
     userId: data.userId,
     turns: data.turns ?? [],
     ...(data.focus ? { focus: data.focus } : {}),
+    ...(data.followUps?.length ? { followUps: data.followUps } : {}),
     clarifies: new Map(
       (data.clarifies ?? []).map(([id, c]) => {
         const { routing, ...rest } = c;
@@ -180,6 +188,11 @@ export class SessionStore {
   addTurn(session: Session, turn: Turn): void {
     session.turns.push({ role: turn.role, text: turn.text.slice(0, 280) });
     if (session.turns.length > MAX_TURNS) session.turns.splice(0, session.turns.length - MAX_TURNS);
+  }
+
+  /** Añade los botones de la última respuesta; se guardan los 16 más recientes (los de respuestas anteriores siguen pulsables). */
+  setFollowUps(session: Session, followUps: FollowUp[]): void {
+    session.followUps = [...(session.followUps ?? []), ...followUps].slice(-MAX_FOLLOWUPS);
   }
 
   addClarify(session: Session, pending: PendingClarify): void {

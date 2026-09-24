@@ -197,6 +197,10 @@ export interface ErrorEvent {
   retryable: boolean;
 }
 
+export interface ActionsEvent {
+  actions: Array<{ id: string; label: string }>;
+}
+
 export interface TableEvent {
   columns: Array<{ key: string; label: string; align?: "left" | "right" }>;
   rows: Array<Record<string, string>>;

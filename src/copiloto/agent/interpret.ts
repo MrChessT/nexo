@@ -494,7 +494,7 @@ export class Interpreter {
           .map((id) => this.ctx.products.find((p) => p.id === id))
           .filter((p): p is Product => !!p)
           .map((product) => ({ product, segmentIndex: -1, amount: null, unit: null, price: null, quantityOutcome: null }));
-        if (products.length > 0) inherited.push(products.length === 1 ? products[0]!.product.name : `${products.length} productos`);
+        if (products.length > 0) inherited.push(products.length === 1 ? products[0]!.product.name : "los mismos productos");
       }
       const focusLocations = focus.locationIds.filter((id) => this.ctx.locations.some((l) => l.id === id));
       if (loc.defaulted && focusLocations.length > 0 && relevant(context, "local")) {

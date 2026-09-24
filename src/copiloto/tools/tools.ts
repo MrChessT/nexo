@@ -12,6 +12,8 @@ export const MAX_ROWS = 12;
 export const CONSUMPTION_WINDOW_DAYS = 28;
 /** Días de historial para precios y desvíos si el usuario no indica periodo. */
 const DEFAULT_LOOKBACK_DAYS = 90;
+/** Hasta dónde se busca el último precio de un producto concreto. */
+const LAST_PRICE_LOOKBACK_DAYS = 365;
 
 const MOVEMENT_LABELS: Record<MovementType, string> = {
   opening: "apertura",
@@ -420,8 +422,10 @@ export class InventoryTools implements Tools {
       if (params.productIds.length > 0 && !params.productIds.includes(product.id)) continue;
       for (const pack of product.packs) packs.set(pack.id, { product, packName: pack.name });
     }
-    // Se pide también el precio anterior al periodo para poder comparar.
-    const raw = await this.source.prices(params.productIds.length > 0 ? [...packs.keys()] : null, sinceIso(addDays(from, -DEFAULT_LOOKBACK_DAYS)));
+    // Se pide también el precio anterior al periodo para poder comparar. Con productos concretos
+    // («precios de la Coca-Cola») vale el último precio conocido aunque sea de antes del periodo.
+    const specific = params.productIds.length > 0;
+    const raw = await this.source.prices(specific ? [...packs.keys()] : null, sinceIso(addDays(from, specific ? -LAST_PRICE_LOOKBACK_DAYS : -DEFAULT_LOOKBACK_DAYS)));
     const series = new Map<string, typeof raw>();
     for (const p of raw) {
       const key = `${p.supplierId}:${p.packId}`;
@@ -433,7 +437,7 @@ export class InventoryTools implements Tools {
       list.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
       const latest = list[list.length - 1]!;
       const pack = packs.get(latest.packId);
-      if (!pack || latest.recordedAt.slice(0, 10) < from) continue;
+      if (!pack || (!specific && latest.recordedAt.slice(0, 10) < from)) continue;
       const previous = [...list].reverse().find((p) => p.recordedAt < latest.recordedAt && !new Decimal(p.price).eq(latest.price));
       const old = previous ? new Decimal(previous.price) : null;
       const latestPrice = new Decimal(latest.price);
@@ -448,7 +452,8 @@ export class InventoryTools implements Tools {
       });
     }
     lines.sort((a, b) => (b.change ?? new Decimal(-1e9)).cmp(a.change ?? new Decimal(-1e9)));
-    const rises = lines.filter((l) => l.change !== null && l.change.gt(0));
+    // Solo cuentan (y se valoran) las subidas dentro del periodo, no el último precio de hace meses.
+    const rises = lines.filter((l) => l.change !== null && l.change.gt(0) && l.date >= from);
     const evalItems: EvalItem[] = rises.map((l) => ({
       kind: "subida",
       key: `subida_precio:${l.supplier}:${l.product.id}:${l.packName}`,

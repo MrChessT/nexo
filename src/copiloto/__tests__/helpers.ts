@@ -43,7 +43,8 @@ export class FakeProvider implements WriterProvider {
   }
 }
 
-export function makeAgent(jev: JevPort, provider: WriterProvider | null = null) {
+/** fastPath: por defecto desactivada, para que los tests prueben las decisiones de Jev. */
+export function makeAgent(jev: JevPort, provider: WriterProvider | null = null, options: { fastPath?: boolean } = {}) {
   const metrics = new Metrics("0.042");
   const audit = new MemoryAuditSink();
   const sessions = new SessionStore(undefined, new LruCache(100, 60_000));
@@ -67,6 +68,7 @@ export function makeAgent(jev: JevPort, provider: WriterProvider | null = null) 
     habits: new HabitsStore(undefined, new LruCache(100, 60_000)),
     confirmDraft: (draftId) => confirmService.confirm({ orgId: ORG_ID, draftId, idempotencyKey: randomUUID() }, fixtureContext(), writer),
     now: () => NOW,
+    fastPath: options.fastPath ?? false,
   });
   return { agent, metrics, audit, sessions, drafts, writer, confirmService };
 }

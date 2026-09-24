@@ -97,3 +97,9 @@
 .copiloto-table tr.flagged td { background: var(--soft-orange); }
 .copiloto-table tr.flagged td:first-child::before { content: "⚠ "; }
 .copiloto-table-more { margin: 0; padding: 5px 8px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+.copiloto-understood.compact p { text-align: right; }
+.copiloto-understood.compact .copiloto-why { margin-left: 0; }
+.copiloto-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.copiloto-actions button { padding: 5px 10px; color: #1f5e46; background: #eef6f0; border: 1px solid #cfe3d5; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.copiloto-actions button:hover:not(:disabled) { background: #dcecde; }
+.copiloto-actions button:disabled { opacity: .5; cursor: default; }

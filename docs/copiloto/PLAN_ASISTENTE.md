@@ -65,6 +65,7 @@ más lento que ahora (una llamada a Jev para decidir y, como mucho, otra para co
 | 3 · Cobertura | Hecha | Recibir/cancelar traspasos; enviar/recibir/cancelar pedidos; abrir inventario y apuntar recuentos; ficha de producto. Pendiente: consumo por producto («¿qué es lo que más se gasta?»). |
 | 4 · Rendimiento | Hecha | Llamada a Jev un 17 % más pequeña de media (8.537 → 7.069 caracteres): candidatos 5,9 → 2,4 por mensaje y sin ruido de búsqueda; pantalla y seguimiento solo cuando hacen falta. |
 | 5 · Jev real | Pendiente | Necesita la clave. |
+| 6 · Respuestas legibles y rápidas | Hecha | Botones para seguir tras cada consulta («Precios», «Consumo del mes», «Ficha», «Qué reponer», «Preparar pedido») que responden sin Jev; vía rápida sin Jev para «¿cuánto X queda?»; tabla antes que la gráfica y gráfica + valoración en paralelo; «Entendido» solo al preguntar; sin texto repetido junto al borrador; ficha en varias líneas; movimientos resumidos en € por tipo; último precio conocido de un producto aunque sea anterior al periodo. |
 
 ## Cómo se mide cada etapa
 - `npm test` (incluye la batería con el catálogo real y las conversaciones simuladas).

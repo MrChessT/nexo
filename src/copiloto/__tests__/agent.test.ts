@@ -13,7 +13,8 @@ describe("enrutado del agente", () => {
     const { agent, audit } = makeAgent(jev);
     const events = await run(agent, chat("¿cuánto ron Barceló queda en Parador?"));
 
-    expect(events.map((e) => e.event)).toEqual(["decision", "navigate", "text", "done"]);
+    // Tras los datos, botones para seguir («Precios», «Consumo del mes», «Ficha»…).
+    expect(events.map((e) => e.event)).toEqual(["decision", "navigate", "actions", "text", "done"]);
     expect(jev.calls).toHaveLength(1);
     const decision = find(events, "decision")!;
     expect(decision.intent).toMatchObject({ value: "consultar", gate: "actuar" });
@@ -82,7 +83,7 @@ describe("enrutado del agente", () => {
     const second = await run(agent, chat("", { message: BRUGAL, clarification: { clarifyId: clarify.clarifyId, optionId: BRUGAL } }));
     const text = find(second, "done")!.text;
     expect(text).toContain("7 botellas (98,00 €)");
-    expect(text).toContain("te lo muestro de todos, desglosado por local");
+    expect(text).toContain("en tus 4 locales");
   });
 
   it("inyección → bloqueo sin herramientas y registrado en auditoría", async () => {
@@ -133,7 +134,8 @@ describe("enrutado del agente", () => {
     const reorderEvents = await run(agent, chat("/reponer"));
     const reorder = find(reorderEvents, "done")!.text;
     expect(reorder).toContain("conviene reponer 5 productos");
-    expect(find(reorderEvents, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ producto: "Coca-Cola 20 cl", local: "Vivero", stock: "2 cajas" })]));
+    // Con la valoración caída, la lista va en el texto (la tabla sale antes de saber que fallaría).
+    expect(reorder).toContain("Coca-Cola 20 cl (Vivero): quedan 2 cajas, pedir");
     expect(reorder).toContain("No he podido valorar la urgencia");
   });
 });
