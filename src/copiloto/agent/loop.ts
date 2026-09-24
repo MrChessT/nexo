@@ -12,7 +12,7 @@ import { JevError, type JevPort, type JevResult } from "../jev/client";
 import { StageTimer, type Metrics } from "../metrics/metrics";
 import { DataError } from "../supabase/client";
 import { Analytics, VIEW_FOR_TOOL } from "../analytics/analytics";
-import { businessDay, horizon, pastPeriod } from "../tools/periods";
+import { businessDay, daysInclusive, horizon, pastPeriod } from "../tools/periods";
 import type { ToolName, Tools } from "../tools/tools";
 import type { EvalItem, ToolParams } from "../tools/types";
 import type { Writer } from "../writer/writer";
@@ -81,12 +81,13 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_orders: "/pedidos",
   query_spend: "/recepciones",
   query_product: "/productos",
+  query_top_usage: "/informes",
 };
 
 /** Consultas cuya gráfica repite la tabla. */
 const CHART_REPEATS_TABLE = new Set<ToolName>(["query_stock", "query_spend"]);
 
-const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
+const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes", query_top_usage: "mes" };
 
 function errorEvent(err: unknown): ErrorEvent {
   if (err instanceof JevError) {
@@ -597,10 +598,6 @@ export function smallTalk(message: string): "hola" | "gracias" | "adios" | undef
   if (/^(adios|hasta luego|hasta manana|chao|nos vemos|bye)\b/.test(text)) return "adios";
   if (/^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ey)\b/.test(text)) return "hola";
   return undefined;
-}
-
-function daysInclusive(from: string, to: string): number {
-  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
 }
 
 /** Productos y locales que menciona un borrador (para heredarlos en el siguiente mensaje). */

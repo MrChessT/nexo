@@ -84,3 +84,5 @@
 {"message":"oye y de agua como vamos en la oliva","intent":"consultar","herramienta":"query_stock","local":"La Oliva","producto":"Agua Solán de Cabras 50 cl"}
 {"message":"queda hielo?","intent":"consultar","herramienta":"query_stock","producto":"Hielo en cubitos"}
 {"message":"¿cuánta coca se ha gastado este mes en el Vivero?","intent":"consultar","herramienta":"query_movements","local":"Vivero","periodo":"mes","producto":"Coca-Cola 20 cl"}
+{"message":"¿qué es lo que más se gasta?","intent":"consultar","herramienta":"query_top_usage"}
+{"message":"top de productos más vendidos este mes en el Vivero","intent":"consultar","herramienta":"query_top_usage","local":"Vivero","periodo":"mes"}

@@ -4,7 +4,7 @@ import Decimal from "decimal.js";
 import type { Herramienta } from "../jev/catalog";
 import type { Product, SessionContext } from "../domain";
 import { formatDecimal, formatMoney, formatStock } from "../entities/units";
-import { addDays, businessDay, formatDay } from "./periods";
+import { addDays, businessDay, daysInclusive, formatDay } from "./periods";
 import type { EvalItem, InventoryDataSource, MovementType, ToolParams, ToolResult, ToolRow } from "./types";
 
 export const MAX_ROWS = 12;
@@ -141,6 +141,8 @@ export class InventoryTools implements Tools {
         return this.spend(params, ctx);
       case "query_product":
         return this.product(params, ctx);
+      case "query_top_usage":
+        return this.topUsage(params, ctx);
     }
   }
 
@@ -238,6 +240,59 @@ export class InventoryTools implements Tools {
   }
 
   /** Gasto en compras (recepciones contabilizadas) por proveedor en el periodo; 30 días si no se indica. */
+  /**
+   * «¿Qué es lo que más se gasta?»: productos ordenados por el valor consumido en el periodo (las
+   * cantidades de productos distintos no se pueden comparar; el dinero sí), con su cantidad, su parte
+   * del total, la media por día y el reparto por local.
+   */
+  private async topUsage(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
+    const products = productMap(ctx);
+    const today = dayOf(params.now);
+    const from = params.period?.from ?? addDays(today, -29);
+    const to = params.period?.to ?? today;
+    const raw = await this.source.movements({
+      locationIds: params.locationIds,
+      productIds: params.productIds.length > 0 ? params.productIds : undefined,
+      since: sinceIso(from),
+    });
+    const tz = new Map(ctx.locations.map((l) => [l.id, l]));
+    const byProduct = new Map<string, { product: Product; qty: Decimal; value: Decimal; perLocation: Map<string, Decimal> }>();
+    for (const m of raw) {
+      if (m.type !== "consumption" || (params.areaId && m.areaId !== params.areaId)) continue;
+      const loc = tz.get(m.locationId);
+      const day = businessDay(new Date(m.occurredAt), loc?.timezone ?? "Europe/Madrid", loc?.dayCutoff ?? "06:00");
+      if (day < from || day > to) continue;
+      const product = products.get(m.productId);
+      if (!product) continue;
+      const qty = new Decimal(m.qty).abs();
+      const entry = byProduct.get(m.productId) ?? { product, qty: new Decimal(0), value: new Decimal(0), perLocation: new Map<string, Decimal>() };
+      entry.qty = entry.qty.plus(qty);
+      entry.value = entry.value.plus(qty.mul(m.unitCost ?? 0));
+      entry.perLocation.set(m.locationId, (entry.perLocation.get(m.locationId) ?? new Decimal(0)).plus(qty));
+      byProduct.set(m.productId, entry);
+    }
+    const days = Math.max(1, daysInclusive(from, to));
+    const total = [...byProduct.values()].reduce((acc, e) => acc.plus(e.value), new Decimal(0));
+    const several = params.locationIds.length > 1;
+    const rows: ToolRow[] = [...byProduct.values()]
+      .sort((a, b) => b.value.cmp(a.value) || b.qty.cmp(a.qty))
+      .map((e, i) => ({
+        posicion: String(i + 1),
+        producto: e.product.name,
+        cantidad: formatStock(e.qty, e.product),
+        valor: formatMoney(e.value),
+        porcentaje: `${formatDecimal(pct(e.value, total) ?? new Decimal(0), 0)} %`,
+        al_dia: formatStock(e.qty.div(days), e.product),
+        desglose: several
+          ? [...e.perLocation.entries()]
+              .sort((a, b) => b[1].cmp(a[1]))
+              .map(([id, q]) => `${tz.get(id)?.name ?? "Local"} ${formatStock(q, e.product)}`)
+              .join(" · ")
+          : null,
+      }));
+    return finish("query_top_usage", rows, { total: formatMoney(total), productos: String(rows.length), desde: formatDay(from), hasta: formatDay(to) }, [], 10);
+  }
+
   private async spend(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
     void ctx;
     const today = dayOf(params.now);

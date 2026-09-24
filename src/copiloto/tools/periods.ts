@@ -35,6 +35,11 @@ function weekday(day: string): number {
   return new Date(`${day}T00:00:00Z`).getUTCDay();
 }
 
+/** Días de un periodo contando los dos extremos (del 1 al 3 → 3). */
+export function daysInclusive(from: string, to: string): number {
+  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
+}
+
 export function formatDay(day: string): string {
   const [y, m, d] = day.split("-");
   return `${d}/${m}/${y}`;
