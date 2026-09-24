@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Decimal from "decimal.js";
 import { ArrowLeft, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { euros, normalizeText, parseDecimal as parse, quantity as show } from "@/lib/format";
 
 // Conteo de inventario en dos pasos:
 //   1) contar en el formato habitual (botellas, cajas…) y guardar las líneas (se pueden ir sumando);
@@ -14,21 +15,6 @@ type Product = { id: string; name: string; base_unit: string };
 type Pack = { id: string; productId: string; name: string; qtyBase: string; isCountDefault: boolean };
 type Entry = { qty: string; unit: string }; // unit: "base" o id de formato
 type PreviewRow = { productId: string; name: string; unit: string; expected: Decimal; counted: Decimal; diff: Decimal; value: Decimal };
-
-/** "2100" ml → "2,1 l"; solo para mostrar. */
-function show(qty: Decimal.Value, unit: string) {
-  const v = new Decimal(qty);
-  const big = v.abs().gte(1000) && (unit === "ml" || unit === "g");
-  const n = (big ? v.div(1000) : v).toDecimalPlaces(2).toString().replace(".", ",");
-  return `${n} ${big ? (unit === "ml" ? "l" : "kg") : unit}`;
-}
-
-const euros = (v: Decimal.Value) => `${new Decimal(v).toFixed(2).replace(".", ",")} €`;
-
-function parse(text: string): Decimal | null {
-  const clean = text.trim().replace(",", ".");
-  return /^\d+(\.\d+)?$/.test(clean) ? new Decimal(clean) : null;
-}
 
 export function CountModal({
   count,
@@ -87,9 +73,8 @@ export function CountModal({
   const entryOf = (productId: string): Entry => entries[productId] ?? { qty: "", unit: defaultUnit(productId) };
   const factor = (productId: string, unit: string) => (unit === "base" ? new Decimal(1) : new Decimal(packs.get(productId)?.find((p) => p.id === unit)?.qtyBase ?? 1));
 
-  const norm = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const visible = useMemo(() => {
-    const list = products.filter((p) => !search || norm(p.name).includes(norm(search)));
+    const list = products.filter((p) => !search || normalizeText(p.name).includes(normalizeText(search)));
     // Primero lo ya contado o en curso, luego el resto por nombre.
     return list.sort((a, b) => Number(!!entries[b.id]?.qty || counted.has(b.id)) - Number(!!entries[a.id]?.qty || counted.has(a.id)) || a.name.localeCompare(b.name));
   }, [products, search, entries, counted]);

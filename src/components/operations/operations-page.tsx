@@ -18,6 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
+import { euros as formatCurrency } from "@/lib/format";
 import "./operations.css";
 import "./operations-modal.css";
 import { CountModal } from "./count-modal";
@@ -71,10 +72,6 @@ const actionLabels: Record<OperationKind, string> = {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-function formatCurrency(value: number) {
-  return `${new Decimal(String(value)).toFixed(2).replace(".", ",")} €`;
 }
 
 function newRef() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Decimal } from "./decimal";
+import Decimal from "decimal.js";
 import { baseToPacks, formatQuantity, openBottleFromWeight, packsToBase } from "./units";
 
 describe("units", () => {

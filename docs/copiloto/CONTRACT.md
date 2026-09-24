@@ -318,6 +318,32 @@ Qué incluye cada vista:
 
 La serie diaria termina ayer, porque el día en curso está incompleto. Cada gráfica lleva como máximo 4 series, con colores en orden fijo y validados para daltonismo.
 
+## GET /reorder
+
+`GET /reorder?locationId=<uuid>&dias=3|7|14` (7 por defecto). La usa «Sugerir pedido» en /pedidos.
+
+Mismo cálculo que `query_reorder` (consumo real, mínimo, objetivo y lo que ya está en camino por traspasos o pedidos abiertos), convertido a formatos de compra con el último proveedor y precio de cada formato:
+
+```json
+{
+  "locationId": "…",
+  "days": 7,
+  "lines": [
+    {
+      "productId": "…", "productName": "Coca-Cola 20 cl", "baseUnit": "ud",
+      "stock": "30", "min": "48", "par": "120", "pendingIn": "0",
+      "avgDaily": "20", "coverageDays": "1.5", "suggestedBase": "158",
+      "pack": { "id": "…", "name": "Caja 24 ud", "qtyBase": "24" },
+      "packs": "7",
+      "supplier": { "id": "…", "name": "Bebidas del Sur" },
+      "price": "13.20"
+    }
+  ]
+}
+```
+
+`packs` siempre se redondea hacia arriba. Sin formato de compra, `pack` y `packs` son null. Sin precio conocido, `supplier` y `price` son null.
+
 ## GET /suggestions
 
 `GET /suggestions?orgId=<uuid>&locationId=<uuid opcional>&limit=<1..20, por defecto 8>`

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Decimal from "decimal.js";
 import { Check, Copy, Mail, MessageCircle, PackageCheck, Plus, Search, Send, Trash2, X, XCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { canManage, euros, num, orderText, orderTotal, parse, saveDraft, STATUS_LABEL, type Order, type OrderLine, type Reference } from "./orders-data";
+import { decimalText as num, euros, inputText, normalizeText, parseDecimal as parse } from "@/lib/format";
+import { canManage, orderText, orderTotal, saveDraft, STATUS_LABEL, type Order, type OrderLine, type Reference } from "./orders-data";
 
 // Ficha de un pedido. Borrador: se edita y se envía (encargado). Enviado o parcial: se recibe
 // (cualquiera con acceso al local) o se cancela (encargado). Recibido o cancelado: solo lectura.
@@ -67,18 +68,17 @@ export function OrderEditor({
   };
   const total = orderTotal(current);
 
-  const norm = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const results = useMemo(() => {
     if (search.trim().length < 2) return [];
     const used = new Set(lines.map((l) => l.packId));
     return [...reference.packs.values()]
-      .filter((p) => !used.has(p.id) && norm(`${p.productName} ${p.name}`).includes(norm(search)))
+      .filter((p) => !used.has(p.id) && normalizeText(`${p.productName} ${p.name}`).includes(normalizeText(search)))
       .slice(0, 8);
   }, [search, lines, reference.packs]);
 
   function addPack(packId: string) {
     const price = reference.lastPrices.get(`${supplierId}:${packId}`) ?? "";
-    setLines((ls) => [...ls, { packId, packsQty: "1", packPrice: price ? num(price) : "", receivedPacks: "0" }]);
+    setLines((ls) => [...ls, { packId, packsQty: "1", packPrice: price ? inputText(price) : "", receivedPacks: "0" }]);
     setSearch("");
   }
 
@@ -149,7 +149,7 @@ export function OrderEditor({
     const initial: Record<string, { qty: string; price: string }> = {};
     for (const l of lines) {
       const remaining = Decimal.max(0, new Decimal(l.packsQty).minus(l.receivedPacks));
-      initial[l.packId] = { qty: remaining.gt(0) ? num(remaining) : "", price: l.packPrice ? num(l.packPrice) : num(reference.lastPrices.get(`${supplierId}:${l.packId}`) ?? "0") };
+      initial[l.packId] = { qty: remaining.gt(0) ? inputText(remaining) : "", price: inputText(l.packPrice || (reference.lastPrices.get(`${supplierId}:${l.packId}`) ?? "0")) };
     }
     setReceive(initial);
     setMode("receive");

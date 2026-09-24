@@ -9,3 +9,6 @@ out
 supabase/.temp/
 *.tsbuildinfo
 .claude/
+
+# Script generado con npm run db:bundle
+supabase/scripts/aplicar.sql

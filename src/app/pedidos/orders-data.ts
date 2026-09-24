@@ -1,6 +1,7 @@
 // Datos y utilidades compartidas de la pantalla de pedidos.
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
+import { decimalText, parseDecimal } from "@/lib/format";
 
 export type OrderStatus = "draft" | "sent" | "partial" | "received" | "cancelled";
 export type Role = "owner" | "admin" | "manager" | "staff";
@@ -46,22 +47,8 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 
 export const canManage = (role: Role) => role !== "staff";
 
-export function euros(value: Decimal.Value) {
-  return `${new Decimal(value).toFixed(2).replace(".", ",")} €`;
-}
-
-export function num(value: Decimal.Value) {
-  return new Decimal(value).toDecimalPlaces(2).toString().replace(".", ",");
-}
-
-/** "1,5" o "1.5" → Decimal; null si no es un número ≥ 0. */
-export function parse(text: string): Decimal | null {
-  const clean = text.trim().replace(",", ".");
-  return /^\d+(\.\d+)?$/.test(clean) ? new Decimal(clean) : null;
-}
-
 export function orderTotal(order: Pick<Order, "lines">): Decimal {
-  return order.lines.reduce((acc, l) => acc.plus(new Decimal(parse(l.packsQty) ?? 0).mul(parse(l.packPrice) ?? 0)), new Decimal(0));
+  return order.lines.reduce((acc, l) => acc.plus(new Decimal(parseDecimal(l.packsQty) ?? 0).mul(parseDecimal(l.packPrice) ?? 0)), new Decimal(0));
 }
 
 export async function loadReference(): Promise<Reference> {
@@ -147,8 +134,8 @@ export async function saveDraft(ref: Reference, order: Omit<Order, "id" | "statu
     id = data.id;
   }
   const lines = order.lines
-    .filter((l) => (parse(l.packsQty) ?? new Decimal(0)).gt(0))
-    .map((l) => ({ order_id: id!, pack_id: l.packId, packs_qty: parse(l.packsQty)!.toNumber(), pack_price: parse(l.packPrice)?.toNumber() ?? null }));
+    .filter((l) => (parseDecimal(l.packsQty) ?? new Decimal(0)).gt(0))
+    .map((l) => ({ order_id: id!, pack_id: l.packId, packs_qty: parseDecimal(l.packsQty)!.toNumber(), pack_price: parseDecimal(l.packPrice)?.toNumber() ?? null }));
   if (lines.length > 0) {
     const { error } = await supabase.from("purchase_order_lines").insert(lines);
     if (error) throw new Error(error.code === "23505" ? "Hay un formato repetido en el pedido." : "No se pudieron guardar las líneas.");
@@ -160,7 +147,7 @@ export async function saveDraft(ref: Reference, order: Omit<Order, "id" | "statu
 export function orderText(ref: Reference, order: Order): string {
   const lines = order.lines.map((l) => {
     const pack = ref.packs.get(l.packId);
-    return `• ${num(l.packsQty)} × ${pack?.name ?? "formato"} — ${pack?.productName ?? "producto"}`;
+    return `• ${decimalText(l.packsQty)} × ${pack?.name ?? "formato"} — ${pack?.productName ?? "producto"}`;
   });
   const when = order.expectedDate ? `, con entrega el ${new Date(`${order.expectedDate}T12:00:00`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}` : "";
   return [

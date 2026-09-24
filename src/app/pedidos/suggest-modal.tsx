@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Decimal from "decimal.js";
 import { Sparkles, X } from "lucide-react";
-import { euros, num, parse, saveDraft, type Reference } from "./orders-data";
+import { euros, inputText, parseDecimal as parse, quantity } from "@/lib/format";
+import { saveDraft, type Reference } from "./orders-data";
 
 // Sugerir pedido: mismo cálculo que el asistente («¿qué me falta?»), en formatos de compra y
 // agrupado por proveedor. Descuenta lo que ya está pedido o en camino. Cada grupo se convierte en
@@ -24,12 +25,6 @@ type ReorderLine = {
 };
 
 type Choice = { include: boolean; qty: string; price: string; supplierId: string };
-
-function qty(value: string, unit: string) {
-  const v = new Decimal(value);
-  const big = v.abs().gte(1000) && (unit === "ml" || unit === "g");
-  return `${(big ? v.div(1000) : v).toDecimalPlaces(1).toString().replace(".", ",")} ${big ? (unit === "ml" ? "l" : "kg") : unit}`;
-}
 
 export function SuggestModal({
   reference,
@@ -68,7 +63,7 @@ export function SuggestModal({
           Object.fromEntries(
             list.map((l) => [
               l.productId,
-              { include: !!l.pack, qty: l.packs ?? "", price: l.price ? num(l.price) : "", supplierId: l.supplier?.id ?? "" },
+              { include: !!l.pack, qty: l.packs ?? "", price: l.price ? inputText(l.price) : "", supplierId: l.supplier?.id ?? "" },
             ]),
           ),
         );
@@ -184,8 +179,8 @@ export function SuggestModal({
                             <b>{l.productName}</b>
                             <small>
                               {l.pack ? `${l.pack.name} · ` : "Sin formato de compra · "}
-                              quedan {qty(l.stock, l.baseUnit)}
-                              {new Decimal(l.pendingIn).gt(0) ? ` · en camino ${qty(l.pendingIn, l.baseUnit)}` : ""}
+                              quedan {quantity(l.stock, l.baseUnit, 1)}
+                              {new Decimal(l.pendingIn).gt(0) ? ` · en camino ${quantity(l.pendingIn, l.baseUnit, 1)}` : ""}
                               {l.coverageDays ? ` · para ${l.coverageDays.replace(".", ",")} días` : ""}
                             </small>
                           </span>

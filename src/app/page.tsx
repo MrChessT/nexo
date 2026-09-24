@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
+import { euros, localDay } from "@/lib/format";
+import { readLocation, saveLocation } from "@/lib/location-preference";
 import "./dashboard-charts.css";
 import {
   ArrowUpRight,
@@ -55,7 +57,6 @@ type MovementType = "opening" | "purchase" | "consumption" | "waste" | "transfer
 type BrowserClient = NonNullable<ReturnType<typeof createClient>>;
 
 const ROLE_LABEL: Record<string, string> = { owner: "Propietario", admin: "Administrador", manager: "Encargado", staff: "Equipo" };
-const LOCATION_KEY = "nexo.local";
 
 const movementIcon: Record<MovementType, typeof Truck> = {
   purchase: ShoppingCart,
@@ -100,15 +101,6 @@ function formatRelativeTime(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
 }
 
-/** Fecha local YYYY-MM-DD (no UTC: a las 00:30 en España sigue siendo hoy). */
-function localDay(date: Date) {
-  return date.toLocaleDateString("sv-SE");
-}
-
-function euros(value: Decimal.Value) {
-  return `${new Decimal(value).toFixed(2).replace(".", ",")} €`;
-}
-
 function greeting(hour: number) {
   return hour < 6 ? "Buenas noches" : hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
 }
@@ -121,23 +113,6 @@ function initialsOf(name: string) {
 /** Abre el asistente (y, si se indica, le envía un mensaje). */
 function askAssistant(message?: string) {
   window.dispatchEvent(new CustomEvent("copiloto:ask", { detail: message ? { message } : {} }));
-}
-
-function readStoredLocation(): string {
-  try {
-    return window.localStorage.getItem(LOCATION_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function storeLocation(id: string) {
-  try {
-    if (id) window.localStorage.setItem(LOCATION_KEY, id);
-    else window.localStorage.removeItem(LOCATION_KEY);
-  } catch {
-    // Sin almacenamiento (modo privado): solo se pierde la preferencia.
-  }
 }
 
 async function loadIdentity(supabase: BrowserClient): Promise<Identity | null> {
@@ -303,7 +278,7 @@ export default function Dashboard() {
         return;
       }
       setIdentity(loaded);
-      const stored = readStoredLocation();
+      const stored = readLocation();
       setLocation(loaded.locations.some((l) => l.id === stored) ? stored : "");
     }
     void start();
@@ -337,7 +312,7 @@ export default function Dashboard() {
   }, []);
 
   function changeLocation(id: string) {
-    storeLocation(id);
+    saveLocation(id);
     setLocation(id);
   }
 

@@ -36,7 +36,7 @@ const ROUTE: Record<Draft["kind"], AppRoute> = {
   pedido: "/pedidos",
 };
 
-/** Mensajes en español de los códigos de las RPC (mismos textos que src/lib/errors.ts de la app). */
+/** Mensajes en español de los códigos de las RPC. */
 const RPC_MESSAGES: Record<RpcErrorCode, string> = {
   unauthenticated: "Tu sesión ha caducado. Vuelve a iniciar sesión.",
   forbidden: "No tienes permisos para realizar esta acción.",

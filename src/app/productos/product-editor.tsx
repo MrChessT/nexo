@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Plus, Star, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Decimal } from "@/lib/decimal";
+import Decimal from "decimal.js";
+import { euros as money, inputText as show } from "@/lib/format";
 import { formatQuantity, type UnitDimension } from "@/lib/units";
 import "./product-editor.css";
 
@@ -82,13 +83,7 @@ function parseNum(text: string): Decimal | null {
   return new Decimal(clean);
 }
 
-const show = (value: Decimal.Value) => new Decimal(value).toDecimalPlaces(4).toString().replace(".", ",");
-
 const newKey = () => crypto.randomUUID();
-
-function money(value: Decimal.Value) {
-  return `${new Decimal(value).toFixed(2).replace(".", ",")} €`;
-}
 
 function friendlyError(error: { code?: string; message?: string } | null, fallback: string) {
   if (!error) return fallback;

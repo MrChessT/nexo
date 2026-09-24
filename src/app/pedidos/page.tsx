@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CirclePlus, ShoppingCart, Sparkles } from "lucide-react";
-import { loadOrders, loadReference, euros, orderTotal, STATUS_LABEL, type Order, type OrderStatus, type Reference } from "./orders-data";
+import { euros } from "@/lib/format";
+import { readLocation } from "@/lib/location-preference";
+import { loadOrders, loadReference, orderTotal, STATUS_LABEL, type Order, type OrderStatus, type Reference } from "./orders-data";
 import { OrderEditor } from "./order-editor";
 import { SuggestModal } from "./suggest-modal";
 import "../productos/productos.css";
@@ -16,7 +18,6 @@ import "./pedidos.css";
 type Tab = "draft" | "open" | "received" | "cancelled";
 const TAB_STATUSES: Record<Tab, OrderStatus[]> = { draft: ["draft"], open: ["sent", "partial"], received: ["received"], cancelled: ["cancelled"] };
 const TAB_LABEL: Record<Tab, string> = { draft: "Borradores", open: "Pendientes de recibir", received: "Recibidos", cancelled: "Cancelados" };
-const LOCATION_KEY = "nexo.local";
 
 export default function OrdersPage() {
   const [reference, setReference] = useState<Reference | null>(null);
@@ -33,16 +34,10 @@ export default function OrdersPage() {
     async function start() {
       await Promise.resolve();
       const params = new URLSearchParams(window.location.search);
-      let stored = "";
-      try {
-        stored = window.localStorage.getItem(LOCATION_KEY) ?? "";
-      } catch {
-        // sin almacenamiento
-      }
       try {
         const ref = await loadReference();
         setReference(ref);
-        const wanted = params.get("local") ?? stored;
+        const wanted = params.get("local") ?? readLocation();
         setLocation(ref.locations.some((l) => l.id === wanted) ? wanted : "");
         // Desde el resumen («Ver qué reponer») se abre directamente la sugerencia.
         if (params.has("sugerir")) setSuggesting(true);

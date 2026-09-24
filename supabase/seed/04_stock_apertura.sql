@@ -1,6 +1,6 @@
 -- Apertura de stock real para ver Stock/Resumen con datos, usando movimientos inmutables
 -- (no se edita stock_balances directamente: el trigger apply_stock_movement lo calcula).
--- Requiere haber ejecutado antes seed_parador_eventos.sql y seed_productos_demo.sql.
+-- Requiere haber ejecutado antes 01_parador_eventos.sql y 02_productos_demo.sql.
 -- Ejecutar en el SQL Editor de Supabase (Ctrl+A para seleccionar todo).
 
 do $$
@@ -16,7 +16,7 @@ declare
 begin
   select id into v_org_id from organizations where name = 'Parador Eventos' limit 1;
   if v_org_id is null then
-    raise exception 'Organizacion no encontrada. Ejecuta primero seed_parador_eventos.sql.';
+    raise exception 'Organizacion no encontrada. Ejecuta primero 01_parador_eventos.sql.';
   end if;
 
   select id into v_parador from locations where org_id = v_org_id and name = 'Parador' limit 1;
@@ -29,7 +29,7 @@ begin
   select id into v_limones from products where org_id = v_org_id and name = 'Limones' limit 1;
 
   if v_coca is null then
-    raise exception 'Productos no encontrados. Ejecuta primero seed_productos_demo.sql.';
+    raise exception 'Productos no encontrados. Ejecuta primero 02_productos_demo.sql.';
   end if;
 
   -- Umbrales minimos por local (para la señal "Bajo minimo" en Stock).

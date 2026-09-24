@@ -1,143 +1,8 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- INSTALACIÓN DEL ASISTENTE + CATÁLOGO VIVERO 55 · proyecto «nexo - inventario»
--- Pega TODO este archivo en Supabase → SQL Editor → Run. Se puede repetir sin error.
---   1) Migración 0005: auditoría del asistente (copilot_audit)
---   2) Migración 0006: estado del asistente (copilot_sessions, copilot_drafts)
---   3) Catálogo de Vivero 55 en el modelo de la app (productos, formatos, proveedores,
---      precios, mínimos y stock de apertura en el local de prueba «Vivero»)
--- ═══════════════════════════════════════════════════════════════════════════
-
--- 1) ───────────────────────────── 0005_copiloto_auditoria
--- Auditoría de Nexo Copiloto: mensajes, decisiones de Jev con su probabilidad, borradores y confirmaciones.
--- Solo inserción: nadie puede modificar ni borrar un registro. El servicio escribe con el JWT del usuario.
-
-create table if not exists copilot_audit (
-  id bigint generated always as identity primary key,
-  org_id uuid not null references organizations(id) on delete cascade,
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  kind text not null check (kind in ('mensaje', 'borrador', 'confirmacion', 'bloqueo')),
-  message_id uuid,
-  draft_id uuid,
-  intent text,
-  outcome text,
-  decisions jsonb not null default '[]'::jsonb,
-  detail jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  check (jsonb_typeof(decisions) = 'array'),
-  check (jsonb_typeof(detail) = 'object')
-);
-
-create index if not exists copilot_audit_org_time on copilot_audit(org_id, created_at desc);
-create index if not exists copilot_audit_draft on copilot_audit(draft_id) where draft_id is not null;
-
-create or replace function forbid_copilot_audit_mutation() returns trigger
-language plpgsql as $$
-begin
-  raise exception 'copilot_audit es inmutable';
-end $$;
-
-drop trigger if exists copilot_audit_immutable on copilot_audit;
-create trigger copilot_audit_immutable
-before update or delete on copilot_audit
-for each row execute function forbid_copilot_audit_mutation();
-
-alter table copilot_audit enable row level security;
-
--- Cada usuario solo registra en su nombre y en organizaciones a las que pertenece.
-drop policy if exists copilot_audit_insert on copilot_audit;
-create policy copilot_audit_insert on copilot_audit for insert
-  with check (user_id = auth.uid() and is_member(org_id));
-
--- Lectura: los administradores ven la auditoría de su organización; cada usuario, la suya.
-drop policy if exists copilot_audit_select on copilot_audit;
-create policy copilot_audit_select on copilot_audit for select
-  using (is_admin(org_id) or user_id = auth.uid());
-
--- 2) ───────────────────────────── 0006_copiloto_estado
--- Estado del asistente (Nexo Copiloto) en la base de datos: en Vercel cada petición puede ir a una
--- instancia distinta, así que borradores y sesiones no pueden vivir en memoria.
--- Todo con el JWT del usuario: cada uno solo ve y toca lo suyo.
-
-create table if not exists copilot_sessions (
-  id uuid primary key,
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  org_id uuid not null references organizations(id) on delete cascade,
-  -- Turnos recientes y aclaraciones pendientes (incluida la llamada nº 1 de Jev que se reutiliza).
-  state jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now(),
-  check (jsonb_typeof(state) = 'object')
-);
-
-create index if not exists copilot_sessions_user on copilot_sessions(user_id, updated_at desc);
-
-create table if not exists copilot_drafts (
-  id uuid primary key,
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  org_id uuid not null references organizations(id) on delete cascade,
-  message_id uuid,
-  request text,
-  draft jsonb not null,
-  status text not null default 'pendiente' check (status in ('pendiente', 'ejecutando', 'confirmado')),
-  idempotency_key uuid,
-  result jsonb,
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now(),
-  check (jsonb_typeof(draft) = 'object')
-);
-
-create index if not exists copilot_drafts_user on copilot_drafts(user_id, created_at desc);
-
--- El contenido de un borrador no cambia nunca: solo su estado y su resultado.
-create or replace function copilot_drafts_guard() returns trigger
-language plpgsql as $$
-begin
-  if new.draft is distinct from old.draft
-     or new.user_id is distinct from old.user_id
-     or new.org_id is distinct from old.org_id
-     or new.expires_at is distinct from old.expires_at then
-    raise exception 'copilot_drafts: el borrador es inmutable';
-  end if;
-  return new;
-end $$;
-
-drop trigger if exists copilot_drafts_immutable on copilot_drafts;
-create trigger copilot_drafts_immutable
-before update on copilot_drafts
-for each row execute function copilot_drafts_guard();
-
-alter table copilot_sessions enable row level security;
-alter table copilot_drafts enable row level security;
-
-drop policy if exists copilot_sessions_own on copilot_sessions;
-create policy copilot_sessions_own on copilot_sessions for all
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid() and is_member(org_id));
-
-drop policy if exists copilot_drafts_select on copilot_drafts;
-create policy copilot_drafts_select on copilot_drafts for select using (user_id = auth.uid());
-drop policy if exists copilot_drafts_insert on copilot_drafts;
-create policy copilot_drafts_insert on copilot_drafts for insert with check (user_id = auth.uid() and is_member(org_id));
-drop policy if exists copilot_drafts_update on copilot_drafts;
-create policy copilot_drafts_update on copilot_drafts for update using (user_id = auth.uid()) with check (user_id = auth.uid());
-drop policy if exists copilot_drafts_delete on copilot_drafts;
-create policy copilot_drafts_delete on copilot_drafts for delete using (user_id = auth.uid());
-
--- Registro de las migraciones para que `supabase db push` no las repita.
-do $$
-begin
-  if to_regclass('supabase_migrations.schema_migrations') is not null then
-    insert into supabase_migrations.schema_migrations (version, name)
-    values ('0005', 'copiloto_auditoria'), ('0006', 'copiloto_estado')
-    on conflict do nothing;
-  end if;
-end $$;
-
--- 3) ───────────────────────────── Catálogo Vivero 55
 -- Catálogo de compra de Vivero 55 importado al MODELO CANÓNICO de Nexo (sin tablas paralelas).
 -- Añade a Parador Eventos: categorías, proveedores, productos con sus formatos (unidad base ml/g/ud),
 -- último precio de compra, mínimos y stock de apertura en el local de prueba «Vivero».
 -- Idempotente: los productos que ya existen (mismo nombre o SKU) no se tocan.
--- Requiere seed_parador_eventos.sql. Ejecutar en el SQL Editor de Supabase (Ctrl+A, Run).
+-- Requiere 01_parador_eventos.sql. Ejecutar en el SQL Editor de Supabase (Ctrl+A, Run).
 
 drop table if exists tmp_cat;
 create temp table tmp_cat (id text, name text, sort int);
@@ -318,7 +183,7 @@ declare
 begin
   select id into v_org from organizations where name = 'Parador Eventos' limit 1;
   if v_org is null then
-    raise exception 'Organización no encontrada. Ejecuta primero seed_parador_eventos.sql.';
+    raise exception 'Organización no encontrada. Ejecuta primero 01_parador_eventos.sql.';
   end if;
   select id into v_vivero from locations where org_id = v_org and name = 'Vivero' limit 1;
 
@@ -400,10 +265,3 @@ begin
 end $$;
 
 drop table if exists tmp_cat, tmp_sup, tmp_prod, tmp_stock;
-
--- Comprobación: debería mostrar ~118 productos nuevos con stock en Vivero.
-select
-  (select count(*) from products p join organizations o on o.id = p.org_id where o.name = 'Parador Eventos') as productos,
-  (select count(*) from suppliers s join organizations o on o.id = s.org_id where o.name = 'Parador Eventos') as proveedores,
-  (select count(*) from stock_balances b join locations l on l.id = b.location_id where l.name = 'Vivero') as productos_con_stock_en_vivero,
-  to_regclass('public.copilot_drafts') is not null as asistente_instalado;

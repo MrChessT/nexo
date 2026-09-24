@@ -5,6 +5,8 @@ import Decimal from "decimal.js";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Filter, Search, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { daysAgo, euros, normalizeText, quantity } from "@/lib/format";
+import { readLocation, saveLocation } from "@/lib/location-preference";
 import "../productos/productos.css";
 import "./stock.css";
 
@@ -26,25 +28,6 @@ type StockRow = {
 type Location = { id: string; name: string };
 
 const STATUS_LABEL: Record<Status, string> = { ok: "Correcto", low: "Bajo mínimo", critical: "Urgente" };
-const LOCATION_KEY = "nexo.local";
-
-/** 2100 ml → "2,1 l"; 350 g → "350 g". Solo para mostrar. */
-function quantity(value: number | null, unit: string) {
-  const v = new Decimal(String(value ?? 0));
-  const big = v.abs().gte(1000) && (unit === "ml" || unit === "g");
-  const shown = big ? v.div(1000) : v;
-  const text = shown.toDecimalPlaces(2).toString().replace(".", ",");
-  return `${text} ${big ? (unit === "ml" ? "l" : "kg") : unit}`;
-}
-
-function euros(value: Decimal.Value) {
-  return `${new Decimal(value).toFixed(2).replace(".", ",")} €`;
-}
-
-function daysAgo(iso: string) {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  return days <= 0 ? "hoy" : days === 1 ? "ayer" : `hace ${days} días`;
-}
 
 function exportCsv(rows: StockRow[], label: string) {
   const header = ["Producto", "Categoría", "Local", "Existencias", "Valor (€)", "Mínimo", "Estado"];
@@ -77,13 +60,7 @@ export default function StockPage() {
     async function start() {
       await Promise.resolve();
       const fromUrl = new URLSearchParams(window.location.search).get("local");
-      let stored = "";
-      try {
-        stored = window.localStorage.getItem(LOCATION_KEY) ?? "";
-      } catch {
-        // sin almacenamiento
-      }
-      setLocation(fromUrl ?? stored);
+      setLocation(fromUrl ?? readLocation());
       const supabase = createClient();
       const { data } = (await supabase?.from("locations").select("id, name").eq("active", true).order("name")) ?? { data: null };
       setLocations((data ?? []) as Location[]);
@@ -143,18 +120,12 @@ export default function StockPage() {
   }, [location, reloadKey]);
 
   function changeLocation(id: string) {
-    try {
-      if (id) window.localStorage.setItem(LOCATION_KEY, id);
-      else window.localStorage.removeItem(LOCATION_KEY);
-    } catch {
-      // sin almacenamiento
-    }
+    saveLocation(id);
     window.history.replaceState(null, "", id ? `/stock?local=${id}` : "/stock");
     setLocation(id);
   }
 
-  const norm = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-  const filtered = rows.filter((row) => (!status || row.status === status) && (!query || norm(`${row.name} ${row.category}`).includes(norm(query))));
+  const filtered = rows.filter((row) => (!status || row.status === status) && (!query || normalizeText(`${row.name} ${row.category}`).includes(normalizeText(query))));
   const totalValue = rows.reduce((acc, r) => acc.plus(r.valueNumber), new Decimal(0));
   const below = rows.filter((r) => r.status !== "ok").length;
   const locationLabel = locations.find((l) => l.id === location)?.name ?? "todos los locales";

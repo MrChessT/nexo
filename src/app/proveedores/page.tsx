@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Archive, ArchiveRestore, ArrowLeft, CirclePlus, Search, Trash2, Truck, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { euros, normalizeText } from "@/lib/format";
 import "../productos/productos.css";
 import "../productos/product-editor.css";
 import "./proveedores.css";
@@ -25,10 +26,6 @@ type Supplier = {
 type Form = Omit<Supplier, "id" | "active" | "prices">;
 
 const EMPTY_FORM: Form = { name: "", taxId: "", email: "", phone: "", notes: "" };
-
-function euros(value: number | null) {
-  return value === null ? "—" : `${value.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-}
 
 function friendly(error: { code?: string } | null, fallback: string) {
   if (error?.code === "23505") return "Ya existe un proveedor con ese nombre.";
@@ -90,9 +87,8 @@ export default function SuppliersPage() {
     () => ({ active: suppliers?.filter((s) => s.active).length ?? 0, archived: suppliers?.filter((s) => !s.active).length ?? 0 }),
     [suppliers],
   );
-  const norm = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const visible = (suppliers ?? []).filter(
-    (s) => (status === "active" ? s.active : !s.active) && (!query || norm(`${s.name} ${s.taxId} ${s.email}`).includes(norm(query))),
+    (s) => (status === "active" ? s.active : !s.active) && (!query || normalizeText(`${s.name} ${s.taxId} ${s.email}`).includes(normalizeText(query))),
   );
 
   return (
@@ -283,7 +279,7 @@ function SupplierEditor({ supplier, onClose, onChanged }: { supplier: Supplier |
                     <div className="editor-row supplier-price-row" key={`${p.productId}-${p.pack}-${i}`}>
                       <Link href={`/productos?producto=${p.productId}`}>{p.product}</Link>
                       <span>{p.pack}</span>
-                      <strong>{euros(p.price)}</strong>
+                      <strong>{p.price === null ? "—" : euros(p.price)}</strong>
                       <span className="muted">{p.at ? new Date(p.at).toLocaleDateString("es-ES") : "—"}</span>
                     </div>
                   ))}

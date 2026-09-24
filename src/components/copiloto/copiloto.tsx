@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, Loader2, Send, ShieldAlert, Sparkles, X } from "lucide-react";
 import { ChartCard } from "@/components/charts/charts";
+import { euros } from "@/lib/format";
 import type { AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, Suggestion } from "./types";
 import "./copiloto.css";
 
@@ -47,8 +48,6 @@ const DECIMAL = /^\d+([.,]\d+)?$/;
 /** Ediciones numéricas: se normalizan a "12.5". El resto (nombre, medida) va tal cual. */
 const NUMERIC_PATH = /^(qtyBase|newPrice|price|packQtyBase|newValue|lines\.\d+\.(packPrice|qtyBase|packsQty)|orders\.\d+\.lines\.\d+\.packsQty)$/;
 
-const euros = (value: string | null) =>
-  value === null ? "—" : `${Number(value).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const DIMENSION_LABEL = { volume: "Volumen (ml)", mass: "Peso (g)", count: "Unidades" } as const;
 
 function currentRoute(pathname: string | null): AppRoute {
@@ -393,7 +392,7 @@ function DraftCard({ draft }: { draft: Draft }) {
           <p className="copiloto-detail">
             {draft.packName} · {draft.supplierName}
             <br />
-            Antes: <b>{euros(draft.oldPrice)}</b> · coste unitario nuevo: {draft.unitCost}
+            Antes: <b>{draft.oldPrice === null ? "—" : euros(draft.oldPrice)}</b> · coste unitario nuevo: {draft.unitCost}
           </p>
           <label className="copiloto-field">
             Precio nuevo por {draft.packName} (€)
