@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Copiloto } from "@/components/copiloto/copiloto";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Copiloto />
+      </body>
     </html>
   );
 }
