@@ -284,6 +284,13 @@ export class Interpreter {
       if (agreement < t.consistencia.act) intentOutcome = worst(intentOutcome, "confirmar");
     }
 
+    // «Ha llegado el traspaso del Parador»: proponer_accion 0,66 (dudoso) pero recibir_traspaso 0,99.
+    // Si Jev tiene clarísima la operación concreta, la intención queda corroborada: preguntar «¿Qué
+    // quieres hacer?» sobraría, y el resultado es un borrador que nunca se ejecuta sin confirmar.
+    if (intentValue === "proponer_accion" && intentOutcome === "confirmar" && this.overrides.intent === undefined && this.actionCorroborates()) {
+      intentOutcome = "actuar";
+    }
+
     if (intentValue === "fuera_de_ambito") {
       return this.done(intentValue, intentOutcome === "actuar" ? { type: "fuera_de_ambito" } : { type: "conversar" });
     }
@@ -302,6 +309,13 @@ export class Interpreter {
       case "proponer_accion":
         return this.done(intentValue, this.action());
     }
+  }
+
+  /** ¿Jev está seguro de una operación concreta (no «ninguna»)? Nunca para cerrar inventario. */
+  private actionCorroborates(): boolean {
+    const answer = this.choice("tipo_accion");
+    if (!answer || answer.choice === "ninguna" || answer.choice === "cierre_inventario") return false;
+    return gateChoice(answer, this.thresholds.tipo_accion).outcome === "actuar";
   }
 
   /** Confirmar o descartar el borrador pendiente. Ejecutar exige mucha seguridad; si no, se pregunta. */

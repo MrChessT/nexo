@@ -112,6 +112,14 @@ describe("borradores desde el chat", () => {
     expect(manager.send).toBe(true);
   });
 
+  it("Jev comprueba la cantidad tal como se pidió («30 unidades», no solo «1 caja + 6 ud»)", async () => {
+    const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: "Parador", local_destino: "Vivero", producto_0: { winner: "Coca-Cola 20 cl", p: 0.99 }, cantidad_ok_0: 0.95 };
+    const jev = new FakeJev([script, { coherencia: 0.9 }]);
+    const draft = find(await run(makeAgent(jev).agent, chat("pasa 30 unidades de coca de Parador al Vivero")), "draft") as TransferDraft;
+    expect(draft.title).toContain("1 caja + 6 ud de Coca-Cola 20 cl");
+    expect((jev.calls[1]!.state as { draft: { lines: string } }).draft.lines).toBe("30 ud (= 1 caja + 6 ud) de Coca-Cola 20 cl");
+  });
+
   it("cantidad sin unidad («6 cocas») → pregunta el formato en vez de suponerlo", async () => {
     const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: "Parador", local_destino: "Vivero", producto_0: { winner: "Coca-Cola 20 cl", p: 0.99 }, cantidad_ok_0: 0.95 };
     const { agent } = makeAgent(new FakeJev([script, { coherencia: 0.9 }]));

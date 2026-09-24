@@ -27,7 +27,7 @@ import { HabitsStore } from "./habits";
 import type { Draft } from "../contract/index";
 import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
-import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
+import { ENTITY_FIELDS, fieldOverrides, isNewQuestion, readFreeText, type FreeTextAnswer } from "./free-text";
 import { tokenize } from "../entities/normalize";
 import { tableFor } from "../writer/table";
 import { followUpsFor } from "./followups";
@@ -173,7 +173,7 @@ export class Agent {
           pageContext = pending.pageContext;
           overrides = option !== null ? { ...pending.overrides, [overrideKey(pending, option)]: overrideValue(option) } : quantityOverrides(pending, typed!);
           reuse = pending.routing;
-        } else if (ENTITY_FIELDS.has(pending.field) && !pending.restart) {
+        } else if (ENTITY_FIELDS.has(pending.field) && !pending.restart && !isNewQuestion(text)) {
           // Falta un dato de la orden y no encaja con ninguna opción: se completa la orden original.
           message = `${pending.message}. ${text}`.slice(0, 1000);
           page = pending.page;

@@ -122,6 +122,30 @@ describe("enrutado del agente", () => {
     expect(clarify.options.map((o) => o.id)).toEqual(["merma", "traspaso", "recepcion"]);
   });
 
+  it("intención dudosa pero operación clarísima (Jev real: 0,66 y recibir_traspaso 0,99) → borrador, sin «¿Qué quieres hacer?»", async () => {
+    const jev = new FakeJev([
+      { intent: { dist: { proponer_accion: 0.66, consultar: 0.21 } }, intent_alt: "cambiar", tipo_accion: { winner: "recibir_traspaso", p: 0.99 }, local: "Parador" },
+      { coherencia: 0.95 },
+    ]);
+    const { agent } = makeAgent(jev);
+    const events = await run(agent, chat("ha llegado el traspaso del Parador"));
+    expect(find(events, "clarify")).toBeUndefined();
+    expect(find(events, "draft")).toMatchObject({ kind: "documento", operation: "recibir_traspaso" });
+  });
+
+  it("intención dudosa y operación también dudosa → se pregunta la intención", async () => {
+    const jev = new FakeJev([{ intent: { dist: { proponer_accion: 0.66, consultar: 0.21 } }, intent_alt: "cambiar", tipo_accion: { dist: { recibir_traspaso: 0.6, traspaso: 0.35 } } }]);
+    const { agent } = makeAgent(jev);
+    expect(find(await run(agent, chat("lo del traspaso del Parador")), "clarify")?.field).toBe("intent");
+  });
+
+  it("el fragmento que ve Jev no lleva el nombre del local («6 cocas», no «6 cocas de Parador»)", async () => {
+    const jev = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso" }]);
+    const { agent } = makeAgent(jev);
+    await run(agent, chat("pasa 6 cocas de Parador a Pickels"));
+    expect((jev.calls[0]!.state as { segments: Array<{ text: string }> }).segments[0]!.text).toBe("6 cocas");
+  });
+
   it("Jev caído → error recuperable; los atajos siguen funcionando", async () => {
     const jev = new FakeJev();
     jev.fail = new JevError("unavailable", "caído");

@@ -21,6 +21,22 @@ export function shortlist<C extends { score: number }>(found: C[]): C[] {
   return found.filter((c) => c.score >= top * 0.4).slice(0, MAX_SHOWN);
 }
 
+const CONNECTORS = new Set(["a", "al", "de", "del", "desde", "en", "hacia", "para", "el", "la", "los", "las"]);
+
+/**
+ * El fragmento tal como lo ve Jev, sin nombres de local o espacio: con «6 cocas de Parador» Jev decía
+ * que ningún producto encajaba (0,80); con «6 cocas», Coca-Cola.
+ */
+export function withoutPlaces(text: string, placeWords: Set<string>): string {
+  const words = text.split(/\s+/).filter((w) => {
+    const tokens = tokenize(w);
+    return tokens.length === 0 || !tokens.every((t) => placeWords.has(t));
+  });
+  while (words.length > 0 && CONNECTORS.has(tokenize(words[words.length - 1]!).join(" "))) words.pop();
+  const kept = words.join(" ").trim();
+  return kept.length > 0 ? kept : text;
+}
+
 export interface RoutingSegment {
   segment: Segment;
   /** Clave de opción Jev → producto. */
@@ -148,7 +164,7 @@ export async function buildRouting(
     current_page: page,
     current_location: currentLocation,
     recent_turns: turns.slice(-4),
-    segments: routingSegments.map((rs) => ({ text: rs.segment.text, amount: rs.segment.amount, unit: rs.segment.unit })),
+    segments: routingSegments.map((rs) => ({ text: withoutPlaces(rs.segment.text, placeWords), amount: rs.segment.amount, unit: rs.segment.unit })),
   };
 
   const questions = routingQuestions({

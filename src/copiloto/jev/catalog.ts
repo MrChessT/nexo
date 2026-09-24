@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-25.5";
+export const CATALOG_VERSION = "2026-09-25.7";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -55,7 +55,7 @@ export const HERRAMIENTAS = {
 export type Herramienta = keyof typeof HERRAMIENTAS;
 
 export const ACCIONES = {
-  merma: "Write off goods that were broken, spilled, expired or given away.",
+  merma: "Write off goods that were broken, spilled, expired, thrown away (\"tira\", \"tirar\") or given away.",
   traspaso: "Send goods from one venue to another venue.",
   recepcion: "Register goods delivered by a supplier: how many units, bottles or boxes arrived. Not for adding a new item to the catalog.",
   cierre_inventario: "Close an open stock count and apply its differences to stock.",
@@ -66,10 +66,10 @@ export const ACCIONES = {
   preparar_pedido: "Prepare a purchase order to send to a supplier: what to buy or order (\"make the order for the week\", \"order 3 boxes of cola from Makro\"). Nothing has arrived yet.",
   abrir_inventario: "Start a physical stock count in a venue (\"start the inventory of the Vivero\").",
   anotar_conteo: "Record how much of a product was counted during a stock count (\"in the bar there are 5 bottles of Beefeater\", \"I counted 3 boxes of cola\").",
-  recibir_traspaso: "Receive or accept a transfer that another venue already sent (\"the transfer from Parador has arrived\").",
+  recibir_traspaso: "Receive or accept, as a whole, a transfer that another venue already sent (\"the transfer from Parador has arrived\"), without listing products or quantities.",
   cancelar_traspaso: "Cancel or undo a transfer that was prepared or sent.",
   enviar_pedido: "Send to the supplier a purchase order that is already prepared (\"send the Makro order\").",
-  recibir_pedido: "Register that a purchase order already sent to a supplier has arrived (\"the Makro order arrived\").",
+  recibir_pedido: "Register that a purchase order already sent to a supplier has arrived, as a whole (\"the Makro order arrived\"), without listing products or quantities.",
   cancelar_pedido: "Cancel a purchase order.",
   ninguna: "No stock operation is requested.",
 } as const satisfies ChoiceCriteria;

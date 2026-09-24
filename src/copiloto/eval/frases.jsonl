@@ -8,7 +8,7 @@
 {"message":"mermas de ayer en el Parador","intent":"consultar","herramienta":"query_movements","local":"Parador","periodo":"ayer"}
 {"message":"¿qué se consumió el fin de semana en el Vivero?","intent":"consultar","herramienta":"query_movements","local":"Vivero","periodo":"fin_de_semana"}
 {"message":"¿ha subido algún proveedor los precios?","intent":"consultar","herramienta":"query_prices"}
-{"message":"¿a cuánto nos cobran la caja de Barceló?","intent":"consultar","herramienta":"query_prices","producto":"Ron Barceló Añejo 70 cl"}
+{"message":"¿a cuánto nos cobran la caja de Barceló?","intent":"consultar","herramienta":"query_product","producto":"Ron Barceló Añejo 70 cl"}
 {"message":"¿hay traspasos sin recibir?","intent":"consultar","herramienta":"query_pending_transfers"}
 {"message":"¿llegó lo que mandamos al Vivero?","intent":"consultar","herramienta":"query_pending_transfers"}
 {"message":"¿qué desvíos hubo en el último inventario?","intent":"consultar","herramienta":"query_count_variance"}
@@ -51,7 +51,7 @@
 {"message":"quiero que el objetivo de coca cola en el Vivero sea 200","intent":"proponer_accion","tipo_accion":"cambiar_minimo","local":"Vivero","producto":"Coca-Cola 20 cl"}
 {"message":"archiva el ron brugal, ya no lo trabajamos","intent":"proponer_accion","tipo_accion":"archivar_producto","producto":"Ron Brugal Añejo 70 cl"}
 {"message":"elimina la tónica schweppes del catálogo","intent":"proponer_accion","tipo_accion":"archivar_producto","producto":"Tónica Schweppes 20 cl"}
-{"message":"¿a cuánto nos cuesta el Barceló?","intent":"consultar","herramienta":"query_prices","producto":"Ron Barceló Añejo 70 cl"}
+{"message":"¿a cuánto nos cuesta el Barceló?","intent":"consultar","herramienta":"query_product","producto":"Ron Barceló Añejo 70 cl"}
 {"message":"prepara el pedido de la semana para Parador","intent":"proponer_accion","tipo_accion":"preparar_pedido","local":"Parador"}
 {"message":"haz el pedido del finde para el Vivero","intent":"proponer_accion","tipo_accion":"preparar_pedido","local":"Vivero"}
 {"message":"pide 3 cajas de coca cola a Makro para Parador","intent":"proponer_accion","tipo_accion":"preparar_pedido","local":"Parador","producto":"Coca-Cola 20 cl"}

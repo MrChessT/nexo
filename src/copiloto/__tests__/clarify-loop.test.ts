@@ -67,6 +67,18 @@ describe("aclaraciones: no se repite la primera orden", () => {
     expect(jev.calls[1]!.state).toMatchObject({ message: text });
   });
 
+  it("una pregunta nueva mientras se pregunta el local tampoco se pega a la orden anterior", async () => {
+    const waste: Script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "merma", producto_0: BARCELO.name, cantidad_ok_0: 0.97 };
+    const stock: Script = { intent: "consultar", intent_alt: "leer", herramienta: "query_stock", local: "Parador" };
+    const jev = new FakeJev([waste, stock]);
+    const { agent } = makeAgent(jev);
+    const clarify = find(await run(agent, chat("se han roto 2 botellas de Barceló")), "clarify")!;
+    expect(clarify.field).toBe("local");
+    const text = "¿cuánto ron queda en Parador?";
+    await run(agent, chat(text, { clarification: { clarifyId: clarify.clarifyId, optionId: "otra", freeText: text } }));
+    expect(jev.calls[1]!.state).toMatchObject({ message: text });
+  });
+
   it("el historial guarda lo que dijo el usuario, no la orden original repetida", async () => {
     const jev = new FakeJev([{ ...TRANSFER, producto_0: "varios" }, { coherencia: 0.95 }, { intent: "conversar" }]);
     const { agent } = makeAgent(jev);

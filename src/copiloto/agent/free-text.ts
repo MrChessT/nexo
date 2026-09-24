@@ -84,6 +84,14 @@ export function readFreeText(pending: PendingClarify, text: string, ctx: Session
   return { kind: "unknown" };
 }
 
+/**
+ * Una pregunta completa («¿cuánto ron queda en Parador?») no completa la orden abierta: es un mensaje
+ * nuevo. Pegada a «quita unas cocas», Jev ya no sabía qué se pedía y preguntaba «¿Qué quieres hacer?».
+ */
+export function isNewQuestion(text: string): boolean {
+  return /[¿?]/.test(text) && tokenize(text).length >= 3;
+}
+
 /** Respuestas de aclaraciones anteriores que no dependen de la posición de un producto en el mensaje. */
 export function fieldOverrides(overrides: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(overrides).filter(([key]) => !/_\d+$/.test(key)));

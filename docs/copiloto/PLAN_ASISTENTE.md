@@ -56,7 +56,7 @@ más lento que ahora (una llamada a Jev para decidir y, como mucho, otra para co
 - `npm run copiloto:conversaciones -- --real` y `npm run copiloto:eval` con los casos nuevos.
 - Ajustar los umbrales de cada contexto con esos datos.
 
-## Estado (25/09/2026)
+## Estado (25/09/2026, etapa 5 revisada con Jev real)
 
 | Etapa | Estado | Qué quedó hecho |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ más lento que ahora (una llamada a Jev para decidir y, como mucho, otra para co
 | 2 · Salida limpia | Hecha | Línea «Entendido» + «¿Por qué?», evento `table`, borradores en botellas/cajas, sin gráficas repetidas. |
 | 3 · Cobertura | Hecha | Recibir/cancelar traspasos; enviar/recibir/cancelar pedidos; abrir inventario y apuntar recuentos; ficha de producto. Pendiente: consumo por producto («¿qué es lo que más se gasta?»). |
 | 4 · Rendimiento | Hecha | Llamada a Jev un 17 % más pequeña de media (8.537 → 7.069 caracteres): candidatos 5,9 → 2,4 por mensaje y sin ruido de búsqueda; pantalla y seguimiento solo cuando hacen falta. |
-| 5 · Jev real | Pendiente | Necesita la clave. |
+| 5 · Jev real | Hecha | Jev real por Vercel AI Gateway (`typesafe-ai/jev`). Conversaciones 19/27 → 27/27 y evaluación 94 % → 97 % (0 errores, 0 borradores equivocados). Arreglos: coherencia con la cantidad tal como se pidió («100 ud (= 4 cajas + 4 ud)»: 0,14 → 0,93); fragmentos sin nombre de local («6 cocas», no «6 cocas de Parador»); intención corroborada por una operación clarísima («ha llegado el traspaso del Parador»: 0,66 + recibir_traspaso 0,99 → borrador); «tira» es merma (recepción 0,34 → merma 1,00); recibir pedido/traspaso = el documento entero, sin productos (recepción con precio 0,68 → 1,00); una pregunta nueva no se pega a la orden abierta. Pendiente: «quita unas cocas» queda en el borde del umbral (merma 0,90-0,93) y varía entre ejecuciones. |
 | 6 · Respuestas legibles y rápidas | Hecha | Botones para seguir tras cada consulta («Precios», «Consumo del mes», «Ficha», «Qué reponer», «Preparar pedido») que responden sin Jev; vía rápida sin Jev para «¿cuánto X queda?»; tabla antes que la gráfica y gráfica + valoración en paralelo; «Entendido» solo al preguntar; sin texto repetido junto al borrador; ficha en varias líneas; movimientos resumidos en € por tipo; último precio conocido de un producto aunque sea anterior al periodo. |
 
 ## Cómo se mide cada etapa
