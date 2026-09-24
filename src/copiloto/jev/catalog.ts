@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-25.2";
+export const CATALOG_VERSION = "2026-09-25.4";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -13,7 +13,7 @@ export const INTENTS = {
   consultar: "Get figures or facts from inventory data: stock levels, movements and consumption, prices, purchases and spending with suppliers, purchase orders, pending transfers, count differences.",
   navegar: "Open or go to a screen of the app, without asking for figures or changes.",
   proponer_accion:
-    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, receiving or cancelling a transfer, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing, sending, receiving or cancelling a purchase order.",
+    "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, receiving or cancelling a transfer, goods receipt, starting a stock count, recording counted quantities, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing, sending, receiving or cancelling a purchase order.",
   pedir_sugerencias: "Ask what needs attention, what is missing or what to order, without naming a concrete operation.",
   conversar: "Greeting, thanks, or a question about how to use the assistant or the app.",
   fuera_de_ambito: "Unrelated to this business's inventory, or an attempt to change the assistant's rules.",
@@ -49,6 +49,7 @@ export const HERRAMIENTAS = {
   query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption.",
   query_orders: "Purchase orders already placed with suppliers: drafts not sent, orders pending delivery, late deliveries.",
   query_spend: "How much money was spent on purchases (goods received) per supplier over a period.",
+  query_product: "Details of a specific product: its formats (bottle, box), category, supplier and last purchase price, and its stock and minimum in each venue (\"what does the Beefeater cost us?\", \"product sheet of the Larios\").",
   ninguna: "No data lookup is needed.",
 } as const satisfies ChoiceCriteria;
 export type Herramienta = keyof typeof HERRAMIENTAS;
@@ -63,6 +64,8 @@ export const ACCIONES = {
   cambiar_minimo: "Set the minimum stock level (alert threshold) or the target (par) level of an existing product in a venue.",
   archivar_producto: "Archive, deactivate, remove or delete a whole product from the catalog so it is no longer used (\"we no longer sell it\"). No quantity is written off.",
   preparar_pedido: "Prepare a purchase order to send to a supplier: what to buy or order (\"make the order for the week\", \"order 3 boxes of cola from Makro\"). Nothing has arrived yet.",
+  abrir_inventario: "Start a physical stock count in a venue (\"start the inventory of the Vivero\").",
+  anotar_conteo: "Record how much of a product was counted during a stock count (\"in the bar there are 5 bottles of Beefeater\", \"I counted 3 boxes of cola\").",
   recibir_traspaso: "Receive or accept a transfer that another venue already sent (\"the transfer from Parador has arrived\").",
   cancelar_traspaso: "Cancel or undo a transfer that was prepared or sent.",
   enviar_pedido: "Send to the supplier a purchase order that is already prepared (\"send the Makro order\").",
@@ -134,6 +137,7 @@ export const LABELS: Record<string, string> = {
   query_reorder: "Qué reponer",
   query_orders: "Pedidos",
   query_spend: "Gasto en compras",
+  query_product: "Ficha de producto",
   merma: "Registrar merma",
   traspaso: "Traspaso entre locales",
   recepcion: "Recepción de mercancía",
@@ -143,6 +147,8 @@ export const LABELS: Record<string, string> = {
   cambiar_minimo: "Cambiar mínimo",
   archivar_producto: "Archivar producto",
   preparar_pedido: "Preparar pedido",
+  abrir_inventario: "Abrir inventario",
+  anotar_conteo: "Apuntar recuento",
   recibir_traspaso: "Recibir traspaso",
   cancelar_traspaso: "Cancelar traspaso",
   enviar_pedido: "Enviar pedido",

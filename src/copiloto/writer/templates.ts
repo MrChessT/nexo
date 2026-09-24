@@ -79,6 +79,9 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       query_reorder: `No falta nada ${where} para ${result.totals.horizonte ?? "los próximos días"}.`,
       query_orders: `No hay pedidos abiertos ${where}.`,
       query_spend: `No hay compras registradas ${where}.`,
+      query_product: result.totals.producto
+        ? `${result.totals.producto} (${result.totals.categoria}). Formatos: ${result.totals.formatos}. Compra: ${result.totals.compra}. No está activo en ningún local.`
+        : "No encuentro ese producto en el catálogo.",
     };
     return `${empty[result.tool].replace(/\s+\./, ".")}`;
   }
@@ -126,6 +129,11 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const t = result.totals;
       const head = `${plural(t.pendientes ?? "0", "pedido pendiente", "pedidos pendientes")} de recibir (${t.valor_pendiente})${t.retrasados !== "0" ? `, ${t.retrasados} con retraso` : ""}${t.borradores !== "0" ? ` y ${plural(t.borradores ?? "0", "borrador sin enviar", "borradores sin enviar")}` : ""}.`;
       return `${head}\n${list(result.rows, (r) => `${r.proveedor} → ${r.local}: ${r.estado}${r.retraso ? " ⚠ con retraso" : ""}, entrega ${r.entrega}, ${r.importe}`)}${more}`;
+    }
+    case "query_product": {
+      const t = result.totals;
+      const places = list(result.rows, (r) => `${r.local}: ${r.cantidad}${r.minimo ? ` (mínimo ${r.minimo})` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
+      return `${t.producto} (${t.categoria}). Formatos: ${t.formatos}. Compra: ${t.compra}. Stock total: ${t.total}.\n${places}`;
     }
     case "query_spend":
       return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}`;

@@ -218,6 +218,19 @@ export const DocumentDraftSchema = base.extend({
   receive: z.array(z.object({ packId: id, packsQty: positive, packPrice: DecimalString.nullable() })).max(40).optional(),
 });
 
+export const CountDraftSchema = base.extend({
+  kind: z.literal("conteo"),
+  operation: z.enum(["abrir", "anotar"]),
+  locationId: id,
+  locationName: z.string(),
+  countId: id.nullable(),
+  areaId: id.nullable(),
+  areaName: z.string().nullable(),
+  lines: z
+    .array(z.object({ productId: id, productName: z.string(), qtyBase: nonNegative, baseUnit, input: quantityInput, text: z.string().max(120) }))
+    .max(20),
+});
+
 const SCHEMAS = {
   merma: WasteDraftSchema,
   traspaso: TransferDraftSchema,
@@ -229,6 +242,7 @@ const SCHEMAS = {
   archivar: ArchiveDraftSchema,
   pedido: OrderDraftSchema,
   documento: DocumentDraftSchema,
+  conteo: CountDraftSchema,
 } as const;
 
 export function validateDraft<D extends Draft>(draft: D): D {

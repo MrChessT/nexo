@@ -58,3 +58,61 @@ describe("traspasos y pedidos desde el chat", () => {
     expect(draft).toMatchObject({ operation: "cancelar_pedido", documentId: option.id, requiredRole: "manager" });
   });
 });
+
+describe("ficha de producto", () => {
+  const sheet = (extra: Script = {}): Script => ({ intent: "consultar", intent_alt: "leer", herramienta: "query_product", ...extra });
+
+  it("«¿a cuánto compramos el Barceló?»: formatos, compra y stock por local", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl" })]));
+    const events = await run(agent, chat("¿a cuánto compramos el Barceló?"));
+    const text = find(events, "done")!.text;
+    expect(text).toContain("Ron Barceló Añejo 70 cl (Destilados). Formatos: Botella 70 cl · Caja 6 botellas. Compra: Caja 6 botellas a 92,40 € (Distribuciones Canarias).");
+    expect(find(events, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ local: "Parador", cantidad: "3 botellas", minimo: "4 botellas" })]));
+    expect(find(events, "navigate")).toMatchObject({ route: "/productos" });
+  });
+
+  it("con un tipo genérico («ron») pregunta de cuál", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "varios" })]));
+    const clarify = find(await run(agent, chat("ficha del ron")), "clarify")!;
+    expect(clarify).toMatchObject({ field: "producto", question: "¿De cuál de estos productos?" });
+    expect(clarify.options.map((o) => o.label)).toEqual(expect.arrayContaining(["Ron Barceló Añejo 70 cl", "Ron Brugal Añejo 70 cl"]));
+  });
+});
+
+describe("inventarios desde el chat", () => {
+  const act = (accion: string, extra: Script = {}): Script => ({ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { winner: accion, p: 0.97 }, ...extra });
+
+  it("«empieza el inventario del Parador»: lo abre al confirmar", async () => {
+    const jev = new FakeJev([act("abrir_inventario", { local: "Parador" }), { coherencia: 0.95 }, { borrador: "confirmar" }]);
+    const { agent, writer } = makeAgent(jev);
+    const draft = find(await run(agent, chat("empieza el inventario del Parador")), "draft")!;
+    expect(draft).toMatchObject({ kind: "conteo", operation: "abrir", title: "Abrir inventario en Parador" });
+    const done = await run(agent, chat("sí, adelante"));
+    expect(find(done, "resolved")!.message).toContain("Inventario abierto en Parador");
+    expect(writer.calls.map((c) => c.method)).toEqual(["openCount"]);
+  });
+
+  it("si ya hay uno abierto, lo dice y explica cómo apuntar", async () => {
+    const { agent } = makeAgent(new FakeJev([act("abrir_inventario", { local: "Vivero" })]));
+    const text = find(await run(agent, chat("abre inventario en el vivero")), "done")!.text;
+    expect(text).toMatch(/^Ya hay un inventario abierto en Vivero \(\d+ productos? contados?\)\./);
+  });
+
+  it("«en la cámara del Vivero hay 3 botellas de Tanqueray»: se apunta en el inventario abierto", async () => {
+    const script = act("anotar_conteo", { local: "Vivero", espacio: "Vivero · Cámara", producto_0: { winner: "Ginebra Tanqueray 70 cl", p: 0.97 }, cantidad_ok_0: 0.97 });
+    const jev = new FakeJev([script, { coherencia: 0.95 }, { borrador: "confirmar" }]);
+    const { agent, writer } = makeAgent(jev);
+    const draft = find(await run(agent, chat("en la cámara del Vivero hay 3 botellas de Tanqueray")), "draft")!;
+    expect(draft).toMatchObject({ kind: "conteo", operation: "anotar", areaName: "Cámara", title: "Contado en Vivero · Cámara: 3 × Botella 70 cl de Ginebra Tanqueray 70 cl" });
+    await run(agent, chat("vale, confírmalo"));
+    expect(writer.calls).toEqual([
+      { method: "addCountLines", args: expect.objectContaining({ areaId: expect.any(String), lines: [expect.objectContaining({ qtyBase: "2100" })] }) },
+    ]);
+  });
+
+  it("sin inventario abierto no apunta: dice cómo abrirlo", async () => {
+    const script = act("anotar_conteo", { local: "Parador", producto_0: { winner: "Ginebra Tanqueray 70 cl", p: 0.97 }, cantidad_ok_0: 0.97 });
+    const text = find(await run(makeAgent(new FakeJev([script])).agent, chat("en el Parador hay 3 botellas de Tanqueray")), "done")!.text;
+    expect(text).toBe("No hay ningún inventario abierto en Parador. Dime «empieza el inventario de Parador» para abrirlo.");
+  });
+});

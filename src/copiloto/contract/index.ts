@@ -170,7 +170,7 @@ export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 export interface DraftBase {
   draftId: string;
-  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | "documento" | CatalogKind;
+  kind: "merma" | "traspaso" | "recepcion" | "cierre_inventario" | "pedido" | "documento" | "conteo" | CatalogKind;
   title: string;
   requiredRole: Role;
   canConfirm: boolean;
@@ -337,6 +337,19 @@ export interface OrderDraft extends DraftBase {
   }>;
 }
 
+/** Inventario: abrirlo en un local o apuntar lo contado en el que está abierto. */
+export interface CountDraft extends DraftBase {
+  kind: "conteo";
+  operation: "abrir" | "anotar";
+  locationId: string;
+  locationName: string;
+  /** Inventario abierto donde se apunta (null al abrir uno). */
+  countId: string | null;
+  areaId: string | null;
+  areaName: string | null;
+  lines: Array<{ productId: string; productName: string; qtyBase: string; baseUnit: BaseUnit; input: QuantityInput; text: string }>;
+}
+
 /** Recibir, enviar o cancelar un traspaso o un pedido que ya existe. */
 export interface DocumentDraft extends DraftBase {
   kind: "documento";
@@ -352,7 +365,7 @@ export interface DocumentDraft extends DraftBase {
   receive?: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
 }
 
-export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft | DocumentDraft;
+export type Draft = WasteDraft | TransferDraft | ReceiptDraft | CountCloseDraft | OrderDraft | CatalogDraft | DocumentDraft | CountDraft;
 
 // Gráficas y análisis -----------------------------------------------------------
 

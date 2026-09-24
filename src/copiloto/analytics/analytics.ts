@@ -454,6 +454,7 @@ export class Analytics {
         break;
       case "query_pending_transfers":
       case "query_orders":
+      case "query_product":
         chart = null;
         break;
     }
@@ -473,4 +474,5 @@ export const VIEW_FOR_TOOL: Record<ToolName, AnalyticsView> = {
   query_reorder: "reposicion",
   query_orders: "reposicion",
   query_spend: "resumen",
+  query_product: "stock",
 };

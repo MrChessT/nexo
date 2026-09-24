@@ -2,7 +2,7 @@
 // se guarda en el servidor y solo se ejecuta con /actions/confirm tras el clic del usuario.
 import { randomUUID } from "node:crypto";
 import Decimal from "decimal.js";
-import type { CountCloseDraft, Draft, ReceiptDraft, Role, TransferDraft, WasteDraft } from "../contract/index";
+import type { CountCloseDraft, CountDraft, Draft, ReceiptDraft, Role, TransferDraft, WasteDraft } from "../contract/index";
 import { hasRole, type Pack, type Product, type SessionContext } from "../domain";
 import { formatDecimal, formatMoney, formatStock, toBase, unitReadings } from "../entities/units";
 import type { ActionPlan, CatalogPlan, ClarifyPlan, DocumentPlan, ResolvedProduct } from "../agent/interpret";
@@ -35,6 +35,7 @@ const REQUIRED_ROLE: Record<Draft["kind"], Role> = {
   pedido: "staff",
   // Recibir lo puede hacer cualquiera del local; enviar un pedido o cancelar, un encargado (ver DocumentBuilder).
   documento: "staff",
+  conteo: "staff",
 };
 
 const EDITABLE: Record<Draft["kind"], string[]> = {
@@ -48,6 +49,7 @@ const EDITABLE: Record<Draft["kind"], string[]> = {
   archivar: ["acknowledged"],
   pedido: ["orders.*.lines.*.packsQty", "acknowledged"],
   documento: ["acknowledged"],
+  conteo: ["acknowledged"],
 };
 
 /** Cabecera común de cualquier borrador (id, rol, caducidad, campos editables). */
@@ -109,6 +111,10 @@ export class DraftBuilder {
         return this.receipt(stock);
       case "cierre_inventario":
         return this.countClose(stock);
+      case "abrir_inventario":
+        return this.countOpen(stock);
+      case "anotar_conteo":
+        return this.countLines(stock);
     }
   }
 
@@ -272,6 +278,63 @@ export class DraftBuilder {
       draft: validateDraft(draft),
       summary: { operation: "goods receipt from a supplier", venue: locationName(ctx, plan.locationId), lines: described.join("; ") },
     };
+  }
+
+  /** Abrir inventario: uno por local; si ya hay uno abierto, se dice y se explica cómo apuntar. */
+  private async countOpen({ plan, ctx, source, now }: BuildInput): Promise<BuildResult> {
+    const name = locationName(ctx, plan.locationId);
+    const open = await source.openCount(plan.locationId);
+    if (open) {
+      const counted = new Set(open.lines.map((l) => l.productId)).size;
+      return { kind: "error", message: `Ya hay un inventario abierto en ${name} (${counted} ${counted === 1 ? "producto contado" : "productos contados"}). Ve apuntando: «en la barra hay 5 botellas de Beefeater».`, navigate: { route: "/inventarios", filters: { locationId: plan.locationId }, auto: false } };
+    }
+    const warnings = plan.locationOutcome === "confirmar" ? ["Revisa el local."] : [];
+    const draft: CountDraft = {
+      ...this.base("conteo", `Abrir inventario en ${name}`, ctx, warnings, now),
+      kind: "conteo",
+      operation: "abrir",
+      locationId: plan.locationId,
+      locationName: name,
+      countId: null,
+      areaId: null,
+      areaName: null,
+      lines: [],
+    };
+    return { kind: "draft", draft: validateDraft(draft), summary: { operation: "start a stock count", venue: name } };
+  }
+
+  /** Apuntar lo contado en el inventario abierto del local (se suma a lo ya contado de ese producto). */
+  private async countLines({ plan, ctx, source, overrides, now }: BuildInput): Promise<BuildResult> {
+    const name = locationName(ctx, plan.locationId);
+    const open = await source.openCount(plan.locationId);
+    if (!open) {
+      return { kind: "error", message: `No hay ningún inventario abierto en ${name}. Dime «empieza el inventario de ${name}» para abrirlo.`, navigate: { route: "/inventarios", filters: { locationId: plan.locationId }, auto: false } };
+    }
+    const area = plan.areaId ? ctx.areas.find((a) => a.id === plan.areaId) ?? null : null;
+    const warnings: string[] = [];
+    const lines: CountDraft["lines"] = [];
+    for (const p of plan.products) {
+      const q = this.quantity(p, overrides);
+      if ("type" in q) return { kind: "clarify", plan: q };
+      warnings.push(...q.warnings);
+      const before = open.lines.filter((l) => l.productId === p.product.id).reduce((a, l) => a.plus(l.qty), new Decimal(0));
+      if (before.gt(0)) warnings.push(`${p.product.name} ya tenía ${formatStock(before, p.product)} contado: se suma.`);
+      lines.push({ productId: p.product.id, productName: p.product.name, qtyBase: q.qtyBase.toString(), baseUnit: p.product.baseUnit, input: q.input, text: describeInput(q, p.product) });
+    }
+    if (plan.locationOutcome === "confirmar") warnings.push("Revisa el local.");
+    const where = `${name}${area ? ` · ${area.name}` : ""}`;
+    const draft: CountDraft = {
+      ...this.base("conteo", `Contado en ${where}: ${lines.map((l) => `${l.text} de ${l.productName}`).join(", ")}`, ctx, warnings, now),
+      kind: "conteo",
+      operation: "anotar",
+      locationId: plan.locationId,
+      locationName: name,
+      countId: open.id,
+      areaId: area?.id ?? null,
+      areaName: area?.name ?? null,
+      lines,
+    };
+    return { kind: "draft", draft: validateDraft(draft), summary: { operation: "record counted quantities in the open stock count", venue: where, lines: lines.map((l) => `${l.text} of ${l.productName}`).join("; ") } };
   }
 
   private async countClose({ plan, ctx, source, now }: BuildInput): Promise<BuildResult> {

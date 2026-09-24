@@ -497,6 +497,14 @@ function DraftCard({ draft, resolved }: { draft: Draft; resolved?: ResolvedEvent
         ))}
       {draft.kind === "pedido" && <p className="copiloto-detail">Se guardan como borrador en Pedidos (pon 0 para quitar una línea). Enviarlos al proveedor lo decides allí.</p>}
 
+      {draft.kind === "conteo" && draft.operation === "anotar" && (
+        <ul className="copiloto-lines">
+          {draft.lines.map((line) => (
+            <li key={line.productName}>{line.productName}: {line.text}</li>
+          ))}
+        </ul>
+      )}
+
       {draft.kind === "documento" && (
         <>
           <p className="copiloto-detail">{draft.summary}</p>

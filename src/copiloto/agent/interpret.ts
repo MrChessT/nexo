@@ -25,7 +25,7 @@ import type { RoutingMeta } from "./routing";
 import type { Focus } from "./session";
 import { preferredLocation, type Habits } from "./habits";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
-import { relevant, slotSpec, type ContextKey } from "../gates/policy";
+import { need, relevant, slotSpec, type ContextKey } from "../gates/policy";
 import { namesAll, namesProduct } from "../entities/mentions";
 import { formatDecimal } from "../entities/units";
 
@@ -470,6 +470,17 @@ export class Interpreter {
     const area = this.readArea(context);
     let products = this.resolveProducts(context, false);
     if ("type" in products) return products;
+    // Consultas de un producto concreto (su ficha): sin producto, o con varios («ginebra»), se pregunta cuál.
+    if (need(context, "producto") === "requerido" && products.length !== 1 && !(products.length === 0 && this.focus?.productIds.length === 1 && this.followsUp())) {
+      if (products.length === 0) return { type: "clarify", field: "producto", question: "¿De qué producto?", options: [] };
+      return {
+        type: "clarify",
+        field: "producto",
+        question: "¿De cuál de estos productos?",
+        options: products.slice(0, 4).map((p) => ({ id: p.product.name, label: p.product.name, probability: null })),
+        segmentIndex: Math.max(0, products[0]!.segmentIndex),
+      };
+    }
     // El periodo solo cuenta donde importa (movimientos, gasto, precios…), no en el stock de ahora.
     let periodo = (relevant(context, "periodo") ? this.choice("periodo")?.choice ?? NO_INDICADO : NO_INDICADO) as Periodo;
 

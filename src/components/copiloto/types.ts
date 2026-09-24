@@ -163,6 +163,13 @@ export type Draft =
     })
   | (DraftBase & { kind: "archivar"; productName: string; stockQty: string; baseUnit: string })
   | (DraftBase & {
+      kind: "conteo";
+      operation: "abrir" | "anotar";
+      locationName: string;
+      areaName: string | null;
+      lines: Array<{ productName: string; text: string }>;
+    })
+  | (DraftBase & {
       kind: "documento";
       operation: "recibir_traspaso" | "cancelar_traspaso" | "enviar_pedido" | "recibir_pedido" | "cancelar_pedido";
       summary: string;

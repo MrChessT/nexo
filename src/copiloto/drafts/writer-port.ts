@@ -3,6 +3,7 @@
 // documentos en estado borrador/abierto (lo que el RLS permite) y no mueven stock.
 // El catálogo (precios, altas, mínimos, archivar) se escribe con el cliente del usuario: RLS exige
 // rol de encargado; si una escritura no afecta a ninguna fila se trata como falta de permiso.
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const RPC_ERROR_CODES = [
@@ -82,6 +83,13 @@ export interface InventoryWriter {
     locationIds: string[];
   }): Promise<{ productId: string }>;
   setLocationLevel(args: { locationId: string; productId: string; field: "min_qty" | "par_qty"; value: string }): Promise<void>;
+  openCount(args: { orgId: string; locationId: string }): Promise<{ countId: string }>;
+  addCountLines(args: {
+    countId: string;
+    areaId: string | null;
+    lines: Array<{ productId: string; qtyBase: string; input: { amount: string; unit: string; packId?: string } }>;
+    clientRef: string;
+  }): Promise<void>;
   receiveTransfer(transferId: string): Promise<void>;
   cancelTransfer(transferId: string): Promise<void>;
   sendOrder(orderId: string): Promise<void>;
@@ -95,6 +103,12 @@ export interface InventoryWriter {
     supplierId: string;
     lines: Array<{ packId: string; packsQty: string; packPrice: string | null }>;
   }): Promise<{ orderId: string }>;
+}
+
+/** UUID determinista por línea a partir de la clave del clic (misma confirmación → mismas claves). */
+function lineRef(key: string, index: number): string {
+  const hex = createHash("sha256").update(`${key}:${index}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 function raise(what: string, error: { message?: string; code?: string }): never {
@@ -136,6 +150,26 @@ export class SupabaseInventoryWriter implements InventoryWriter {
       raise("transfer_lines", lines.error);
     }
     return { transferId };
+  }
+
+  async openCount(args: { orgId: string; locationId: string }): Promise<{ countId: string }> {
+    const { data, error } = await this.db.from("inventory_counts").insert({ org_id: args.orgId, location_id: args.locationId }).select("id").single();
+    if (error) raise("open_count", error.code === "23505" ? { ...error, message: "invalid_status" } : error);
+    return { countId: String((data as { id: string }).id) };
+  }
+
+  async addCountLines(args: Parameters<InventoryWriter["addCountLines"]>[0]): Promise<void> {
+    // client_ref por línea (derivado de la clave del clic): repetir la confirmación no duplica líneas.
+    const rows = args.lines.map((l, i) => ({
+      count_id: args.countId,
+      product_id: l.productId,
+      area_id: args.areaId,
+      qty: l.qtyBase,
+      input: l.input,
+      client_ref: lineRef(args.clientRef, i),
+    }));
+    const { error } = await this.db.from("count_lines").upsert(rows, { onConflict: "client_ref", ignoreDuplicates: true });
+    if (error) raise("count_lines", error);
   }
 
   async receiveTransfer(transferId: string): Promise<void> {

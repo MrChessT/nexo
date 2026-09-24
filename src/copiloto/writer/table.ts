@@ -38,6 +38,11 @@ function columnsFor(result: ToolResult): { columns: Column[]; flag?: (row: ToolR
         columns: [{ key: "proveedor", label: "Proveedor" }, { key: "local", label: "Local" }, { key: "estado", label: "Estado" }, { key: "entrega", label: "Entrega" }, { key: "importe", label: "Importe", align: "right" }],
         flag: (r) => r.retraso === true,
       };
+    case "query_product":
+      return {
+        columns: [{ key: "local", label: "Local" }, { key: "cantidad", label: "Stock", align: "right" }, { key: "minimo", label: "Mínimo", align: "right" }],
+        flag: (r) => r.bajo_minimo === true,
+      };
     case "query_spend":
       return { columns: [{ key: "proveedor", label: "Proveedor" }, { key: "importe", label: "Importe", align: "right" }, { key: "porcentaje", label: "%", align: "right" }] };
   }

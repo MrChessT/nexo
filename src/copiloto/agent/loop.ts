@@ -76,6 +76,7 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_reorder: "/informes",
   query_orders: "/pedidos",
   query_spend: "/recepciones",
+  query_product: "/productos",
 };
 
 /** Consultas cuya gráfica repite la tabla. */

@@ -26,6 +26,15 @@ export class FixtureWriter implements InventoryWriter {
     return { transferId: randomUUID() };
   }
 
+  async openCount(args: Parameters<InventoryWriter["openCount"]>[0]) {
+    this.record("openCount", args);
+    return { countId: randomUUID() };
+  }
+
+  async addCountLines(args: Parameters<InventoryWriter["addCountLines"]>[0]) {
+    this.record("addCountLines", args);
+  }
+
   async receiveTransfer(transferId: string) {
     this.record("receiveTransfer", { transferId });
   }
