@@ -47,8 +47,8 @@ export class FixtureWriter implements InventoryWriter {
     this.record("deleteOpenReceipt", { receiptId });
   }
 
-  async closeCount(countId: string, zeroUncounted: boolean) {
-    this.record("closeCount", { countId, zeroUncounted });
+  async closeCount(countId: string, zeroUncounted: boolean, asConsumption: boolean) {
+    this.record("closeCount", { countId, zeroUncounted, asConsumption });
   }
 
   async setSupplierPrice(args: Parameters<InventoryWriter["setSupplierPrice"]>[0]) {

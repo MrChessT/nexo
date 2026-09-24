@@ -69,7 +69,7 @@ export interface InventoryWriter {
   }): Promise<{ receiptId: string }>;
   postReceipt(receiptId: string): Promise<void>;
   deleteOpenReceipt(receiptId: string): Promise<void>;
-  closeCount(countId: string, zeroUncounted: boolean): Promise<void>;
+  closeCount(countId: string, zeroUncounted: boolean, asConsumption: boolean): Promise<void>;
   setSupplierPrice(args: { supplierId: string; packId: string; price: string }): Promise<void>;
   createProduct(args: {
     orgId: string;
@@ -164,8 +164,8 @@ export class SupabaseInventoryWriter implements InventoryWriter {
     if (error) raise("goods_receipts.delete", error);
   }
 
-  async closeCount(countId: string, zeroUncounted: boolean): Promise<void> {
-    const { error } = await this.db.rpc("close_count", { p_count: countId, p_zero_uncounted: zeroUncounted });
+  async closeCount(countId: string, zeroUncounted: boolean, asConsumption: boolean): Promise<void> {
+    const { error } = await this.db.rpc("close_count", { p_count: countId, p_zero_uncounted: zeroUncounted, p_as_consumption: asConsumption });
     if (error) raise("close_count", error);
   }
 

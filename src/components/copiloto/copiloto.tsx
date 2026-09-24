@@ -489,6 +489,9 @@ function DraftCard({ draft }: { draft: Draft }) {
           <label className="copiloto-check">
             <input type="checkbox" disabled={locked} onChange={(event) => edit("zeroUncounted", event.target.checked)} /> Poner a cero lo no contado
           </label>
+          <label className="copiloto-check">
+            <input type="checkbox" defaultChecked={draft.asConsumption} disabled={locked} onChange={(event) => edit("asConsumption", event.target.checked)} /> Lo que falta es consumo (no un ajuste)
+          </label>
         </>
       )}
 

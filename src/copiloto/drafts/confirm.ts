@@ -188,7 +188,7 @@ export class ConfirmService {
         return { ok: true, kind: "recepcion", documentId: receiptId, movementIds: [], message: "Recepción registrada y stock actualizado.", navigate: navigate({ locationId: draft.locationId }) };
       }
       case "cierre_inventario": {
-        await writer.closeCount(draft.countId, draft.zeroUncounted);
+        await writer.closeCount(draft.countId, draft.zeroUncounted, draft.asConsumption);
         return { ok: true, kind: "cierre_inventario", documentId: draft.countId, movementIds: [], message: "Inventario cerrado y ajustes aplicados.", navigate: navigate({ locationId: draft.locationId }) };
       }
       case "precio": {

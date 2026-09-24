@@ -214,6 +214,8 @@ export interface CountCloseDraft extends DraftBase {
   locationId: string;
   locationName: string;
   zeroUncounted: boolean;
+  /** Las diferencias negativas se registran como consumo (no como ajuste). */
+  asConsumption: boolean;
   preview: {
     countedProducts: number;
     adjustments: Array<{

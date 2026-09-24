@@ -121,6 +121,7 @@ export type Draft =
       kind: "cierre_inventario";
       locationName: string;
       zeroUncounted: boolean;
+      asConsumption: boolean;
       preview: {
         countedProducts: number;
         adjustments: Array<{ productName: string; expected: string; counted: string; diff: string; baseUnit: string; diffValue: string }>;

@@ -93,6 +93,7 @@ export const CountCloseDraftSchema = base.extend({
   locationId: id,
   locationName: z.string(),
   zeroUncounted: z.boolean(),
+  asConsumption: z.boolean(),
   preview: z.object({
     countedProducts: z.number().int().min(0),
     adjustments: z.array(

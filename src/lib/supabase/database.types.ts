@@ -519,7 +519,20 @@ export type Database = {
       send_transfer: { Args: { p_transfer: string }; Returns: undefined };
       receive_transfer: { Args: { p_transfer: string; p_lines?: Json }; Returns: undefined };
       cancel_transfer: { Args: { p_transfer: string }; Returns: undefined };
-      close_count: { Args: { p_count: string; p_zero_uncounted?: boolean }; Returns: undefined };
+      close_count: { Args: { p_count: string; p_zero_uncounted?: boolean; p_as_consumption?: boolean }; Returns: undefined };
+      count_preview: {
+        Args: { p_count: string; p_zero_uncounted?: boolean };
+        Returns: Array<{
+          product_id: string;
+          product_name: string;
+          base_unit: string;
+          expected: number;
+          counted: number;
+          diff: number;
+          unit_cost: number;
+          diff_value: number;
+        }>;
+      };
       post_receipt: { Args: { p_receipt: string }; Returns: undefined };
       create_organization: { Args: { p_name: string; p_business_type?: string }; Returns: string };
       catalog_search: {
