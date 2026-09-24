@@ -64,6 +64,8 @@ function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>
       query_pending_transfers: `No hay traspasos pendientes de recibir ${where}.`,
       query_count_variance: `No hay desvíos de inventario ${where}.`,
       query_reorder: `No falta nada ${where} para ${result.totals.horizonte ?? "los próximos días"}.`,
+      query_orders: `No hay pedidos abiertos ${where}.`,
+      query_spend: `No hay compras registradas ${where}.`,
     };
     return `${empty[result.tool].replace(/\s+\./, ".")}${notice}`;
   }
@@ -98,6 +100,13 @@ function renderQuery(o: Extract<DecisionReport["outcome"], { kind: "consulta" }>
         : list(result.rows, (r) => `${r.producto} (${r.local}): ${r.diferencia}, ${r.valor}`);
       return `${head}\n${body}${notice}`;
     }
+    case "query_orders": {
+      const t = result.totals;
+      const head = `${plural(t.pendientes ?? "0", "pedido pendiente", "pedidos pendientes")} de recibir (${t.valor_pendiente})${t.retrasados !== "0" ? `, ${t.retrasados} con retraso` : ""}${t.borradores !== "0" ? ` y ${plural(t.borradores ?? "0", "borrador sin enviar", "borradores sin enviar")}` : ""}.`;
+      return `${head}\n${list(result.rows, (r) => `${r.proveedor} → ${r.local}: ${r.estado}${r.retraso ? " ⚠ con retraso" : ""}, entrega ${r.entrega}, ${r.importe}`)}${more}${notice}`;
+    }
+    case "query_spend":
+      return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}${notice}`;
     case "query_reorder": {
       if (evaluations.length === 0) {
         return `Para ${result.totals.horizonte} conviene reponer ${plural(result.totals.productos ?? "0", "producto", "productos")}:\n${list(

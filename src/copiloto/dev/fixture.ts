@@ -10,6 +10,8 @@ import type {
   MovementRaw,
   OpenCountRaw,
   OpenOrderRaw,
+  OrderRaw,
+  PurchaseRaw,
   PriceRaw,
   SupplierPriceRaw,
   TransferRaw,
@@ -130,6 +132,36 @@ export class FixtureDataSource implements InventoryDataSource {
   openOrderLines: OpenOrderRaw[] = [];
 
   constructor(private readonly now: Date = new Date()) {}
+
+  async orders(filter: { locationIds: string[]; statuses: OrderRaw["status"][] }): Promise<OrderRaw[]> {
+    const day = (h: number) => hoursAgo(this.now, h).slice(0, 10);
+    const all: OrderRaw[] = [
+      // Enviado hace 5 días, entrega prevista hace 2: con retraso.
+      {
+        id: id("abababab", 1), locationId: PARADOR.id, supplierName: "Distribuciones Canarias", status: "sent",
+        createdAt: hoursAgo(this.now, 24 * 5), sentAt: hoursAgo(this.now, 24 * 5), expectedDate: day(48),
+        lines: [{ productId: P[1]!.id, packsQty: "2", packPrice: "92.40", receivedPacks: "0" }],
+      },
+      // Borrador sin enviar en Vivero.
+      {
+        id: id("abababab", 2), locationId: VIVERO.id, supplierName: "Bebidas del Sur", status: "draft",
+        createdAt: hoursAgo(this.now, 20), sentAt: null, expectedDate: null,
+        lines: [{ productId: P[4]!.id, packsQty: "5", packPrice: "13.20", receivedPacks: "0" }],
+      },
+    ];
+    return all.filter((o) => filter.locationIds.includes(o.locationId) && filter.statuses.includes(o.status));
+  }
+
+  async purchases(filter: { locationIds: string[]; since: string }): Promise<PurchaseRaw[]> {
+    const day = (d: number) => hoursAgo(this.now, 24 * d).slice(0, 10);
+    const all: PurchaseRaw[] = [
+      { receiptId: "r1", locationId: PARADOR.id, supplierId: id("99999999", 1), supplierName: "Distribuciones Canarias", docDate: day(3), total: "184.80" },
+      { receiptId: "r2", locationId: PARADOR.id, supplierId: id("99999999", 2), supplierName: "Bebidas del Sur", docDate: day(3), total: "132.00" },
+      { receiptId: "r3", locationId: VIVERO.id, supplierId: id("99999999", 2), supplierName: "Bebidas del Sur", docDate: day(10), total: "66.00" },
+      { receiptId: "r4", locationId: PARADOR.id, supplierId: id("99999999", 1), supplierName: "Distribuciones Canarias", docDate: day(60), total: "300.00" },
+    ];
+    return all.filter((p) => filter.locationIds.includes(p.locationId) && p.docDate >= filter.since);
+  }
 
   async openOrders(filter: { locationIds: string[] }): Promise<OpenOrderRaw[]> {
     return this.openOrderLines.filter((o) => filter.locationIds.includes(o.locationId));

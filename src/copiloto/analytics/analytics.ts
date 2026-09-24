@@ -406,6 +406,30 @@ export class Analytics {
     };
   }
 
+  /** Gasto en compras (recepciones) por proveedor en la ventana de la consulta. */
+  async spendBySupplier(q: AnalyticsQuery): Promise<ChartSpec> {
+    const w = this.window(q);
+    const raw = (await this.source.purchases({ locationIds: q.locationIds, since: w.from })).filter((p) => p.docDate <= w.to);
+    const totals = new Map<string, Decimal>();
+    for (const p of raw) {
+      const name = p.supplierName ?? "Sin proveedor";
+      totals.set(name, (totals.get(name) ?? new Decimal(0)).plus(p.total));
+    }
+    const points = [...totals.entries()]
+      .sort((a, b) => b[1].cmp(a[1]))
+      .slice(0, TOP_N)
+      .map(([name, v]) => point(name, name, v, "money"));
+    return {
+      id: "compras-proveedor",
+      kind: "bar",
+      title: "Compras por proveedor",
+      subtitle: `Recepciones, ${w.label}`,
+      format: "money",
+      series: [{ key: "importe", name: "Importe", points }],
+      ...(points.length === 0 ? { empty: "Sin compras en este periodo." } : {}),
+    };
+  }
+
   /** Gráfica que acompaña a una respuesta del chat (null si no aporta: sin datos o una sola barra). */
   async chartForTool(tool: ToolName, q: AnalyticsQuery, horizonDays: number): Promise<ChartSpec | null> {
     let chart: ChartSpec | null;
@@ -425,7 +449,11 @@ export class Analytics {
       case "query_count_variance":
         chart = await this.variance(q);
         break;
+      case "query_spend":
+        chart = await this.spendBySupplier(q);
+        break;
       case "query_pending_transfers":
+      case "query_orders":
         chart = null;
         break;
     }
@@ -443,4 +471,6 @@ export const VIEW_FOR_TOOL: Record<ToolName, AnalyticsView> = {
   query_pending_transfers: "resumen",
   query_count_variance: "desvios",
   query_reorder: "reposicion",
+  query_orders: "reposicion",
+  query_spend: "resumen",
 };

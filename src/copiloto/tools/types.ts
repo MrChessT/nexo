@@ -37,6 +37,30 @@ export interface OpenCountRaw {
   lines: Array<{ productId: string; qty: string }>;
 }
 
+/** Pedido a proveedor con sus líneas (cifras como cadena decimal). */
+export interface OrderRaw {
+  id: string;
+  locationId: string;
+  supplierName: string;
+  status: "draft" | "sent" | "partial" | "received" | "cancelled";
+  createdAt: string;
+  sentAt: string | null;
+  /** YYYY-MM-DD o null. */
+  expectedDate: string | null;
+  lines: Array<{ productId: string; packsQty: string; packPrice: string | null; receivedPacks: string }>;
+}
+
+/** Recepción contabilizada: lo que se gastó con un proveedor en una fecha. */
+export interface PurchaseRaw {
+  receiptId: string;
+  locationId: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  /** YYYY-MM-DD. */
+  docDate: string;
+  total: string;
+}
+
 /** Cantidad aún por recibir de pedidos abiertos (borrador, enviado o parcial), en unidad base. */
 export interface OpenOrderRaw {
   locationId: string;
@@ -64,6 +88,9 @@ export interface InventoryDataSource {
   transfers(filter: { locationIds: string[]; status: TransferRaw["status"][] }): Promise<TransferRaw[]>;
   countResults(filter: DataFilter & { since: string }): Promise<CountResultRaw[]>;
   openOrders(filter: { locationIds: string[] }): Promise<OpenOrderRaw[]>;
+  orders(filter: { locationIds: string[]; statuses: OrderRaw["status"][] }): Promise<OrderRaw[]>;
+  /** Recepciones cerradas desde `since` (YYYY-MM-DD, incluido). */
+  purchases(filter: { locationIds: string[]; since: string }): Promise<PurchaseRaw[]>;
 }
 
 // Parámetros y resultados ---------------------------------------------------------

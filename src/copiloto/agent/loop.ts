@@ -67,9 +67,11 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_pending_transfers: "/traspasos",
   query_count_variance: "/informes",
   query_reorder: "/informes",
+  query_orders: "/pedidos",
+  query_spend: "/recepciones",
 };
 
-const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana" };
+const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
 
 function errorEvent(err: unknown): ErrorEvent {
   if (err instanceof JevError) {

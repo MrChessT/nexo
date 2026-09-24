@@ -5,12 +5,12 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-24.5";
+export const CATALOG_VERSION = "2026-09-24.7";
 
 // Opciones fijas --------------------------------------------------------------
 
 export const INTENTS = {
-  consultar: "Get figures or facts from inventory data: stock levels, movements, prices, pending transfers, count differences.",
+  consultar: "Get figures or facts from inventory data: stock levels, movements and consumption, prices, purchases and spending with suppliers, purchase orders, pending transfers, count differences.",
   navegar: "Open or go to a screen of the app, without asking for figures or changes.",
   proponer_accion:
     "Record or prepare an operation that changes stock, documents or the product catalog: waste or breakage, transfer between venues, goods receipt, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing a purchase order to a supplier.",
@@ -47,6 +47,8 @@ export const HERRAMIENTAS = {
   query_pending_transfers: "Transfers that were sent but not yet received.",
   query_count_variance: "Differences found in stock counts.",
   query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption.",
+  query_orders: "Purchase orders already placed with suppliers: drafts not sent, orders pending delivery, late deliveries.",
+  query_spend: "How much money was spent on purchases (goods received) per supplier over a period.",
   ninguna: "No data lookup is needed.",
 } as const satisfies ChoiceCriteria;
 export type Herramienta = keyof typeof HERRAMIENTAS;
@@ -125,6 +127,8 @@ export const LABELS: Record<string, string> = {
   query_pending_transfers: "Traspasos pendientes",
   query_count_variance: "Desvíos de inventario",
   query_reorder: "Qué reponer",
+  query_orders: "Pedidos",
+  query_spend: "Gasto en compras",
   merma: "Registrar merma",
   traspaso: "Traspaso entre locales",
   recepcion: "Recepción de mercancía",

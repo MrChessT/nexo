@@ -57,3 +57,8 @@
 {"message":"pide 3 cajas de coca cola a Makro para Parador","intent":"proponer_accion","tipo_accion":"preparar_pedido","local":"Parador","producto":"Coca-Cola 20 cl"}
 {"message":"¿qué tengo que pedir esta semana?","intent":"pedir_sugerencias","herramienta":"query_reorder"}
 {"message":"han llegado las 3 cajas de coca cola del pedido","intent":"proponer_accion","tipo_accion":"recepcion","producto":"Coca-Cola 20 cl","aclarar":true}
+{"message":"¿qué pedidos tengo pendientes?","intent":"consultar","herramienta":"query_orders"}
+{"message":"¿ha llegado ya el pedido de Makro?","intent":"consultar","herramienta":"query_orders"}
+{"message":"¿hay algún pedido retrasado?","intent":"consultar","herramienta":"query_orders"}
+{"message":"¿cuánto he gastado este mes en compras?","intent":"consultar","herramienta":"query_spend"}
+{"message":"¿cuánto le he comprado a Bebidas del Sur?","intent":"consultar","herramienta":"query_spend"}
