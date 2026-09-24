@@ -36,8 +36,10 @@ export function tokenSimilarity(q: string, n: string): number {
   if (q === n) return 1;
   if (/^\d+$/.test(q) || /^\d+$/.test(n)) return 0;
   const prefix = commonPrefix(q, n);
-  // Palabras cortas: solo si una es el principio de la otra («ron» → «rones»), no «coca» → «cóctel».
-  if (prefix >= 4 || (prefix >= 3 && prefix === Math.min(q.length, n.length))) return 0.85;
+  // Palabras cortas: solo plurales y poco más («ron» → «rones», «gin» → «gins»), no «coca» → «cóctel»
+  // ni «gas» → «gastado».
+  const short = Math.min(q.length, n.length);
+  if (prefix >= 4 || (prefix >= 3 && prefix === short && Math.max(q.length, n.length) - short <= 2)) return 0.85;
   const sim = jaccard(trigrams(q), trigrams(n));
   return sim >= 0.35 ? sim * 0.8 : 0;
 }
@@ -56,8 +58,9 @@ const NOTES_WEIGHT = 0.9;
 export function lexicalScore(query: string, product: Product, options: { notes?: boolean } = {}): number {
   const qTokens = tokenize(query).filter((t) => t.length >= 2 && !STOPWORDS.has(t));
   if (qTokens.length === 0) return 0;
-  const nameTokens = tokenize(`${product.name} ${product.category ?? ""}`);
-  const noteTokens = options.notes === false ? [] : tokenize(product.notes ?? "").filter((t) => !NOTE_NOISE.has(t) && !/^\d+$/.test(t));
+  // «Destilados para gamas»: «para» no identifica nada (y se parecía a «Parador»).
+  const nameTokens = tokenize(`${product.name} ${product.category ?? ""}`).filter((t) => !STOPWORDS.has(t));
+  const noteTokens = options.notes === false ? [] : tokenize(product.notes ?? "").filter((t) => !NOTE_NOISE.has(t) && !STOPWORDS.has(t) && !/^\d+$/.test(t));
   let score = 0;
   for (const q of qTokens) {
     let best = 0;

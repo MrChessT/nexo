@@ -36,10 +36,13 @@ describe("enrutado del agente", () => {
     expect(Object.keys(state as object).sort()).toEqual(["current_location", "current_page", "message", "recent_turns", "segments"]);
     expect((state as { segments: unknown[] }).segments).toEqual([{ text: "2 botellas de ron", amount: "2", unit: "botella" }]);
     expect(Object.keys(questions)).toEqual(
-      expect.arrayContaining(["intent", "intent_alt", "destino", "local", "local_destino", "espacio", "herramienta", "tipo_accion", "motivo_merma", "ambiguo", "inyeccion", "producto_0", "cantidad_ok_0"]),
+      expect.arrayContaining(["intent", "intent_alt", "local", "local_destino", "espacio", "herramienta", "tipo_accion", "motivo_merma", "ambiguo", "inyeccion", "producto_0", "cantidad_ok_0"]),
     );
-    // Sin fechas en el mensaje no se pregunta el periodo (menos tokens y menos ruido).
-    expect(Object.keys(questions)).not.toContain("periodo");
+    // Solo lo que el mensaje puede contestar: sin fechas no hay periodo; sin «llévame/abre…» no hay
+    // pantalla; sin conversación previa no hay seguimiento.
+    expect(Object.keys(questions)).not.toEqual(expect.arrayContaining(["periodo"]));
+    expect(Object.keys(questions)).not.toContain("destino");
+    expect(Object.keys(questions)).not.toContain("seguimiento");
     expect(JSON.stringify(questions.cantidad_ok_0)).toContain("`segments.0.amount`");
   });
 

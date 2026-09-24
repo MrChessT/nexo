@@ -9,6 +9,17 @@ import { RESERVED_KEYS, routingQuestions, type RoutingState } from "../jev/catal
 import type { Turn } from "./session";
 
 export const CANDIDATES_PER_SEGMENT = 20;
+/** Como mucho estos candidatos por fragmento llegan a Jev (cada uno lleva categoría, notas y formatos). */
+const MAX_SHOWN = 12;
+
+/**
+ * Candidatos que merece la pena enseñar a Jev: los que se parecen al mejor (≥ 40 % de su puntuación).
+ * Si uno destaca («beefeater»), va casi solo: menos tokens y menos opciones con las que dudar.
+ */
+export function shortlist<C extends { score: number }>(found: C[]): C[] {
+  const top = found[0]?.score ?? 0;
+  return found.filter((c) => c.score >= top * 0.4).slice(0, MAX_SHOWN);
+}
 
 export interface RoutingSegment {
   segment: Segment;
@@ -49,6 +60,16 @@ export function mentionsPeriod(message: string): boolean {
   return /\b\d{1,2}[/-]\d{1,2}\b/.test(message) || tokenize(message).some((w) => PERIOD_WORDS.has(w));
 }
 
+/** Pide ir a una pantalla («llévame a mermas», «abre los informes»): solo entonces se pregunta cuál. */
+const SCREEN_WORDS = new Set([
+  "lleva", "llevame", "llevarme", "abre", "abreme", "abrir", "ir", "ve", "vete", "voy", "vamos", "pantalla", "pagina", "menu", "entra",
+  "entrar", "informe", "informes", "grafica", "graficas", "grafico", "graficos", "navega", "ensename", "pestana",
+]);
+
+export function mentionsScreen(message: string): boolean {
+  return tokenize(message).some((w) => SCREEN_WORDS.has(w));
+}
+
 /** Por qué se da de baja algo: roturas, caducidad, derrames, invitaciones, errores de servicio. */
 export function mentionsReason(message: string): boolean {
   return /romp|\brot[oa]s?\b|caduc|derram|invit|error|equivoc|estrope|podri|venci|mal servid|se (?:ha|han) caido|cayo|tirad/.test(tokenize(message).join(" "));
@@ -87,9 +108,12 @@ export async function buildRouting(
   // Sin cantidades: un segmento "mención" con el mensaje completo, para consultas del tipo "¿cuánto ron queda?".
   const segments: Segment[] = parsed.length > 0 ? parsed : [{ text: message, amount: null, unit: null, productText: message, price: null }];
 
+  // Los nombres de local y de espacio no describen productos («6 cocas de Parador»): fuera de la búsqueda.
+  const placeWords = new Set([...ctx.locations.map((l) => l.name), ...ctx.areas.map((a) => a.name)].flatMap((n) => tokenize(n)).filter((w) => w.length >= 3));
+  const productQuery = (text: string) => tokenize(text).filter((w) => !placeWords.has(w)).join(" ");
   const routingSegments: RoutingSegment[] = [];
   for (const segment of segments) {
-    const found = await retriever.retrieve(ctx.products, segment.productText || segment.text, CANDIDATES_PER_SEGMENT, ctx.catalogHash);
+    const found = shortlist(await retriever.retrieve(ctx.products, productQuery(segment.productText || segment.text), CANDIDATES_PER_SEGMENT, ctx.catalogHash));
     if (found.length === 0) continue;
     const candidates = new Map<string, Product>();
     const scores = new Map<string, number>();
@@ -102,7 +126,7 @@ export async function buildRouting(
   // Hay cifras pero ninguna va pegada a un producto conocido ("pon el mínimo del Barceló a 6 botellas"):
   // se busca el producto en el mensaje completo, sin cantidad asociada.
   if (routingSegments.length === 0 && parsed.length > 0) {
-    const found = await retriever.retrieve(ctx.products, message, CANDIDATES_PER_SEGMENT, ctx.catalogHash);
+    const found = shortlist(await retriever.retrieve(ctx.products, productQuery(message), CANDIDATES_PER_SEGMENT, ctx.catalogHash));
     if (found.length > 0) {
       routingSegments.push({
         segment: { text: message, amount: null, unit: null, productText: message, price: null },
@@ -133,6 +157,8 @@ export async function buildRouting(
     askLocation: ctx.locations.length > 1,
     askPeriod: mentionsPeriod(message),
     askReason: mentionsReason(message),
+    askScreen: mentionsScreen(message),
+    askFollowUp: turns.length > 0,
     locations: [...locationKeys.keys()],
     areas: [...areaKeys.keys()],
     segments: routingSegments.map((rs) => ({

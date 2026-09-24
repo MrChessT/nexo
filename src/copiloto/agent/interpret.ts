@@ -332,7 +332,9 @@ export class Interpreter {
   private navigate(): Plan {
     const g = this.gate("destino", "Pantalla", this.thresholds.destino);
     if (!g || g.choice === "ninguna" || g.outcome === "preguntar") {
-      return this.clarify("destino", "¿A qué pantalla quieres ir?", g?.ranked ?? [], ["ninguna"]);
+      // Sin la pregunta (el mensaje no pedía pantalla) se ofrecen las pantallas más usadas.
+      const ranked = g?.ranked ?? ["/stock", "/pedidos", "/informes"].map((option) => ({ option, probability: 0 }));
+      return this.clarify("destino", "¿A qué pantalla quieres ir?", ranked, ["ninguna"]);
     }
     const filters: NavigateFilters = {};
     const loc = this.readLocation("navegar");

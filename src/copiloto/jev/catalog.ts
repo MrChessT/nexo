@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-25.4";
+export const CATALOG_VERSION = "2026-09-25.5";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -190,6 +190,10 @@ export interface RoutingInput {
   askPeriod?: boolean;
   /** false: el mensaje no da un motivo de merma. */
   askReason?: boolean;
+  /** false: el mensaje no pide ir a ninguna pantalla. */
+  askScreen?: boolean;
+  /** false: no hay conversación previa que continuar. */
+  askFollowUp?: boolean;
   locations: string[];
   areas: string[];
   segments: RoutingSegmentInput[];
@@ -254,6 +258,8 @@ export function routingQuestions(input: RoutingInput): Questions {
   }
   if (input.askPeriod === false) delete questions.periodo;
   if (input.askReason === false) delete questions.motivo_merma;
+  if (input.askScreen === false) delete questions.destino;
+  if (input.askFollowUp === false) delete questions.seguimiento;
 
   if (input.areas.length > 0) {
     questions.espacio = choice(

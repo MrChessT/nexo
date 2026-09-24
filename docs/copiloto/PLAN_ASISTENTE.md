@@ -56,6 +56,16 @@ más lento que ahora (una llamada a Jev para decidir y, como mucho, otra para co
 - `npm run copiloto:conversaciones -- --real` y `npm run copiloto:eval` con los casos nuevos.
 - Ajustar los umbrales de cada contexto con esos datos.
 
+## Estado (25/09/2026)
+
+| Etapa | Estado | Qué quedó hecho |
+| --- | --- | --- |
+| 1 · Confianza por contexto | Hecha | `gates/policy.ts` (18 contextos), evidencia literal, lo irrelevante fuera, preguntas a Jev según pistas del mensaje. |
+| 2 · Salida limpia | Hecha | Línea «Entendido» + «¿Por qué?», evento `table`, borradores en botellas/cajas, sin gráficas repetidas. |
+| 3 · Cobertura | Hecha | Recibir/cancelar traspasos; enviar/recibir/cancelar pedidos; abrir inventario y apuntar recuentos; ficha de producto. Pendiente: consumo por producto («¿qué es lo que más se gasta?»). |
+| 4 · Rendimiento | Hecha | Llamada a Jev un 17 % más pequeña de media (8.537 → 7.069 caracteres): candidatos 5,9 → 2,4 por mensaje y sin ruido de búsqueda; pantalla y seguimiento solo cuando hacen falta. |
+| 5 · Jev real | Pendiente | Necesita la clave. |
+
 ## Cómo se mide cada etapa
 - `npm test` (incluye la batería con el catálogo real y las conversaciones simuladas).
 - Cada etapa añade casos a `src/copiloto/eval/conversaciones.json` y a `bateria.jsonl`.
