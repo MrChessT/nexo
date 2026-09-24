@@ -56,3 +56,4 @@
   .count-row { grid-template-columns: 1fr 64px 110px; }
   .count-totals { grid-template-columns: 1fr 1fr; }
 }
+.op-modal-line-row.with-unit { grid-template-columns: 1fr 70px 120px 28px; }

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Decimal from "decimal.js";
 import { createClient } from "@/lib/supabase/client";
-import { euros, localDay } from "@/lib/format";
+import { euros, localDay, quantity } from "@/lib/format";
+import { formatStock, type UnitDimension } from "@/lib/units";
 import { readLocation, saveLocation } from "@/lib/location-preference";
 import "./dashboard-charts.css";
 import {
@@ -30,6 +31,20 @@ import {
 } from "lucide-react";
 
 // Resumen de inicio: todo lo que se ve sale de la base de datos (con RLS) y se puede filtrar por local.
+
+type HomeStockRow = {
+  product_name: string;
+  category_name: string | null;
+  base_unit: string;
+  qty: number;
+  stock_value: number | null;
+  below_min: boolean;
+  dimension?: UnitDimension | null;
+  count_pack_name?: string | null;
+  count_pack_qty?: number | null;
+  purchase_pack_name?: string | null;
+  purchase_pack_qty?: number | null;
+};
 
 type Location = { id: string; name: string };
 type Identity = { name: string; initials: string; role: string; org: string; locations: Location[] };
@@ -182,22 +197,23 @@ async function loadDashboard(supabase: BrowserClient, locationId: string): Promi
     d.setDate(d.getDate() - i);
     days.push(localDay(d));
   }
-  let stockQuery = supabase
-    .from("v_stock_valuation")
-    .select("product_name, category_name, base_unit, qty, stock_value, below_min")
-    .order("below_min", { ascending: false })
-    .order("product_name")
-    .limit(4);
+  // Con la migración 0016 la vista trae los formatos para mostrar «12 botellas» o «2 cajas + 5 ud».
+  const STOCK_BASE = "product_name, category_name, base_unit, qty, stock_value, below_min";
+  const STOCK_FULL = `${STOCK_BASE}, dimension, count_pack_name, count_pack_qty, purchase_pack_name, purchase_pack_qty`;
+  const stockQueryFor = (columns: string) => {
+    const q = supabase.from("v_stock_valuation").select(columns).order("below_min", { ascending: false }).order("product_name").limit(4);
+    return locationId ? q.eq("location_id", locationId) : q;
+  };
   let movementQuery = supabase.from("stock_movements").select("id, type, occurred_at, products(name), locations(name)").order("occurred_at", { ascending: false }).limit(6);
   let transferQuery = supabase.from("transfers").select("id", { count: "exact", head: true }).in("status", ["draft", "in_transit"]);
   if (locationId) {
-    stockQuery = stockQuery.eq("location_id", locationId);
     movementQuery = movementQuery.eq("location_id", locationId);
     transferQuery = transferQuery.or(`from_location_id.eq.${locationId},to_location_id.eq.${locationId}`);
   }
 
   // Todo en una sola ronda de peticiones.
-  const [stock, summary, usage, movements, transfers] = await Promise.all([stockQuery, loadSummary(supabase, locationId), loadUsage(supabase, days[0]!, locationId), movementQuery, transferQuery]);
+  const [fullStock, summary, usage, movements, transfers] = await Promise.all([stockQueryFor(STOCK_FULL), loadSummary(supabase, locationId), loadUsage(supabase, days[0]!, locationId), movementQuery, transferQuery]);
+  const stock = fullStock.error ? await stockQueryFor(STOCK_BASE) : fullStock; // migración 0016 aún sin aplicar
   if (stock.error || !summary) return null;
 
   const byDay = new Map<string, number>();
@@ -220,12 +236,18 @@ async function loadDashboard(supabase: BrowserClient, locationId: string): Promi
     attention: summary.attention,
     critical: summary.critical,
     pendingTransfers: transfers.count ?? 0,
-    stockRows: (stock.data ?? []).map((row) => {
+    stockRows: ((stock.data ?? []) as unknown as HomeStockRow[]).map((row) => {
       const critical = row.qty < 0 || (row.below_min && row.qty <= 0);
       return {
         name: row.product_name,
         category: row.category_name ?? "Sin categoría",
-        amount: `${new Decimal(String(row.qty ?? 0)).toFixed(2)} ${row.base_unit}`,
+        amount: row.dimension
+          ? formatStock(row.qty ?? 0, {
+              dimension: row.dimension,
+              countPack: row.count_pack_name && row.count_pack_qty ? { name: row.count_pack_name, qtyBase: String(row.count_pack_qty) } : null,
+              purchasePack: row.purchase_pack_name && row.purchase_pack_qty ? { name: row.purchase_pack_name, qtyBase: String(row.purchase_pack_qty) } : null,
+            })
+          : quantity(row.qty ?? 0, row.base_unit),
         value: euros(String(row.stock_value ?? 0)),
         status: critical ? "critical" : row.below_min ? "low" : "ok",
         color: critical ? "red" : row.below_min ? "orange" : "green",

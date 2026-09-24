@@ -7,6 +7,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { daysAgo, euros, normalizeText, quantity } from "@/lib/format";
 import { readLocation, saveLocation } from "@/lib/location-preference";
+import { formatStock, type CountingPacks, type UnitDimension } from "@/lib/units";
 import "../productos/productos.css";
 import "./stock.css";
 
@@ -26,6 +27,33 @@ type StockRow = {
   status: Status;
 };
 type Location = { id: string; name: string };
+
+type ValuationRow = {
+  location_id: string;
+  location_name: string | null;
+  product_id: string;
+  product_name: string;
+  category_name: string | null;
+  base_unit: string;
+  qty: number;
+  stock_value: number | null;
+  min_qty: number | null;
+  below_min: boolean;
+  family_name?: string | null;
+  dimension?: UnitDimension | null;
+  count_pack_name?: string | null;
+  count_pack_qty?: number | null;
+  purchase_pack_name?: string | null;
+  purchase_pack_qty?: number | null;
+};
+
+function countingPacks(row: ValuationRow): CountingPacks {
+  return {
+    dimension: row.dimension ?? "count",
+    countPack: row.count_pack_name && row.count_pack_qty ? { name: row.count_pack_name, qtyBase: String(row.count_pack_qty) } : null,
+    purchasePack: row.purchase_pack_name && row.purchase_pack_qty ? { name: row.purchase_pack_name, qtyBase: String(row.purchase_pack_qty) } : null,
+  };
+}
 
 const STATUS_LABEL: Record<Status, string> = { ok: "Correcto", low: "Bajo mínimo", critical: "Urgente" };
 
@@ -82,16 +110,18 @@ export default function StockPage() {
         setLoading(false);
         return;
       }
-      let stockQuery = supabase
-        .from("v_stock_valuation")
-        .select("location_id, location_name, product_id, product_name, category_name, base_unit, qty, stock_value, min_qty, below_min")
-        .order("product_name");
+      const BASE = "location_id, location_name, product_id, product_name, category_name, base_unit, qty, stock_value, min_qty, below_min";
+      // Con la migración 0016 la vista trae familia y formatos («12 botellas», «2 cajas + 5 ud»).
+      const FULL = `${BASE}, family_name, dimension, count_pack_name, count_pack_qty, purchase_pack_name, purchase_pack_qty`;
+      const stockQueryFor = (columns: string) => {
+        const q = supabase.from("v_stock_valuation").select(columns).order("product_name");
+        return selected ? q.eq("location_id", selected) : q;
+      };
       let countQuery = supabase.from("inventory_counts").select("closed_at, locations(name)").eq("status", "closed").order("closed_at", { ascending: false }).limit(1);
-      if (selected) {
-        stockQuery = stockQuery.eq("location_id", selected);
-        countQuery = countQuery.eq("location_id", selected);
-      }
-      const [stock, count] = await Promise.all([stockQuery, countQuery]);
+      if (selected) countQuery = countQuery.eq("location_id", selected);
+      const [full, count] = await Promise.all([stockQueryFor(FULL), countQuery]);
+      const stock = full.error ? await stockQueryFor(BASE) : full; // migración 0016 aún sin aplicar
+      if (id !== requestId.current) return;
       if (id !== requestId.current) return;
       if (stock.error) {
         setError("No se pudo cargar el stock del local seleccionado.");
@@ -99,16 +129,16 @@ export default function StockPage() {
         return;
       }
       setRows(
-        (stock.data ?? []).map((row) => ({
+        ((stock.data ?? []) as unknown as ValuationRow[]).map((row) => ({
           id: row.product_id,
           locationId: row.location_id,
           locationName: row.location_name ?? "",
           name: row.product_name,
-          category: row.category_name ?? "Sin categoría",
-          quantity: quantity(row.qty, row.base_unit),
+          category: row.family_name && row.category_name ? `${row.family_name} · ${row.category_name}` : row.category_name ?? "Sin categoría",
+          quantity: row.dimension ? formatStock(row.qty, countingPacks(row)) : quantity(row.qty, row.base_unit),
           value: euros(String(row.stock_value ?? 0)),
           valueNumber: new Decimal(String(row.stock_value ?? 0)).toFixed(2),
-          minimum: row.min_qty ? quantity(row.min_qty, row.base_unit) : "—",
+          minimum: row.min_qty ? (row.dimension ? formatStock(row.min_qty, countingPacks(row)) : quantity(row.min_qty, row.base_unit)) : "—",
           status: row.qty < 0 || (row.below_min && row.qty <= 0) ? "critical" : row.below_min ? "low" : "ok",
         })),
       );

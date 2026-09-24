@@ -15,6 +15,9 @@ type ReorderLine = {
   productName: string;
   baseUnit: string;
   stock: string;
+  /** Stock y pendiente como se cuentan («2 cajas + 5 ud»); faltan en respuestas antiguas. */
+  stockText?: string;
+  pendingInText?: string;
   min: string;
   pendingIn: string;
   coverageDays: string | null;
@@ -179,8 +182,8 @@ export function SuggestModal({
                             <b>{l.productName}</b>
                             <small>
                               {l.pack ? `${l.pack.name} · ` : "Sin formato de compra · "}
-                              quedan {quantity(l.stock, l.baseUnit, 1)}
-                              {new Decimal(l.pendingIn).gt(0) ? ` · en camino ${quantity(l.pendingIn, l.baseUnit, 1)}` : ""}
+                              quedan {l.stockText ?? quantity(l.stock, l.baseUnit, 1)}
+                              {new Decimal(l.pendingIn).gt(0) ? ` · en camino ${l.pendingInText ?? quantity(l.pendingIn, l.baseUnit, 1)}` : ""}
                               {l.coverageDays ? ` · para ${l.coverageDays.replace(".", ",")} días` : ""}
                             </small>
                           </span>

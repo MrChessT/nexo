@@ -471,6 +471,12 @@ export type Database = {
           par_qty: number | null;
           below_min: boolean;
           suggested_order_qty: number;
+          family_name: string | null;
+          dimension: "mass" | "volume" | "count";
+          count_pack_name: string | null;
+          count_pack_qty: number | null;
+          purchase_pack_name: string | null;
+          purchase_pack_qty: number | null;
         };
         Relationships: [];
       };

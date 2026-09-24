@@ -15,15 +15,15 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     const r = await tools.run("query_stock", { ...base, locationIds: [LOCATIONS[0]!.id] }, ctx);
     const rum = r.rows.find((row) => row.producto === "Ron Barceló Añejo 70 cl")!;
     // 2100 ml × 0,021429 €/ml = 45,0009 €
-    expect(rum).toMatchObject({ cantidad: "3 × Botella 70 cl (2,1 l)", valor: "45,00 €", minimo: "4 × Botella 70 cl", bajo_minimo: true });
+    expect(rum).toMatchObject({ cantidad: "3 botellas", valor: "45,00 €", minimo: "4 botellas", bajo_minimo: true });
     expect(r.rows[0]!.bajo_minimo).toBe(true);
   });
 
   it("stock por espacio usa stock_area_balances", async () => {
     const r = await tools.run("query_stock", { ...base, areaId: ctx.areas[0]!.id }, ctx);
     expect(r.rows.map((row) => [row.producto, row.espacio, row.cantidad])).toEqual([
-      ["Ron Barceló Añejo 70 cl", "Barra 1", "2 × Botella 70 cl (1,4 l)"],
-      ["Coca-Cola 20 cl", "Barra 1", "30 ud"],
+      ["Ron Barceló Añejo 70 cl", "Barra 1", "2 botellas"],
+      ["Coca-Cola 20 cl", "Barra 1", "1 caja + 6 ud"],
     ]);
   });
 
@@ -31,7 +31,7 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     const r = await tools.run("query_stock", { ...base, productIds: [PRODUCTS[0]!.id] }, ctx);
     expect(r.totals.desglose).toBe("local");
     expect(r.rows).toEqual([
-      expect.objectContaining({ producto: "Ron Barceló Añejo 70 cl", cantidad: "4 × Botella 70 cl (2,8 l)", desglose: "Parador 3 × Botella 70 cl ⚠ · Pickels 1 × Botella 70 cl", bajo_minimo: true }),
+      expect.objectContaining({ producto: "Ron Barceló Añejo 70 cl", cantidad: "4 botellas", desglose: "Parador 3 botellas ⚠ · Pickels 1 botella", bajo_minimo: true }),
     ]);
   });
 
@@ -46,7 +46,7 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     const period = pastPeriod("semana", "2026-09-23", "", "semana");
     const r = await tools.run("query_movements", { ...base, period }, ctx);
     const waste = r.rows.find((row) => row.tipo === "merma" && row.producto === "Ron Barceló Añejo 70 cl");
-    expect(waste).toMatchObject({ cantidad: "1,4 l", valor: "30,00 €" });
+    expect(waste).toMatchObject({ cantidad: "2 botellas", valor: "30,00 €" });
   });
 
   it("precios: subida porcentual calculada en código", async () => {
@@ -57,7 +57,7 @@ describe("herramientas (solo lectura, decimal.js)", () => {
 
   it("desvíos de inventario ordenados por valor", async () => {
     const r = await tools.run("query_count_variance", base, ctx);
-    expect(r.evalItems[0]!.data).toMatchObject({ product: "Ginebra Tanqueray 70 cl", diff: "-1,4 l", diff_pct: "-50 %", diff_value: "-34,00 €" });
+    expect(r.evalItems[0]!.data).toMatchObject({ product: "Ginebra Tanqueray 70 cl", diff: "-2 botellas", diff_pct: "-50 %", diff_value: "-34,00 €" });
   });
 
   it("traspasos en tránsito con antigüedad y valor", async () => {

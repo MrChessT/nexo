@@ -3,7 +3,7 @@
 import Decimal from "decimal.js";
 import type { Herramienta } from "../jev/catalog";
 import type { Product, SessionContext } from "../domain";
-import { formatBase, formatDecimal, formatMoney, formatStock } from "../entities/units";
+import { formatDecimal, formatMoney, formatStock } from "../entities/units";
 import { addDays, businessDay, formatDay } from "./periods";
 import type { EvalItem, InventoryDataSource, MovementType, ToolParams, ToolResult, ToolRow } from "./types";
 
@@ -280,7 +280,7 @@ export class InventoryTools implements Tools {
           producto: l.product.name,
           local: locationName(ctx, l.locationId),
           espacio: l.areaName,
-          cantidad: formatStock(l.qty, l.product, false),
+          cantidad: formatStock(l.qty, l.product),
           valor: formatMoney(l.value),
           minimo: null,
           bajo_minimo: false,
@@ -309,7 +309,7 @@ export class InventoryTools implements Tools {
         cantidad: formatStock(g.qty, g.product),
         desglose: [...g.parts]
           .sort((a, b) => locationName(ctx, a.locationId).localeCompare(locationName(ctx, b.locationId)))
-          .map((l) => `${locationName(ctx, l.locationId)} ${formatStock(l.qty, l.product, false)}${l.min !== null && l.qty.lt(l.min) ? " ⚠" : ""}`)
+          .map((l) => `${locationName(ctx, l.locationId)} ${formatStock(l.qty, l.product)}${l.min !== null && l.qty.lt(l.min) ? " ⚠" : ""}`)
           .join(" · "),
         valor: formatMoney(g.value),
         minimo: null,
@@ -324,7 +324,7 @@ export class InventoryTools implements Tools {
       espacio: l.areaName,
       cantidad: formatStock(l.qty, l.product),
       valor: formatMoney(l.value),
-      minimo: l.min ? formatStock(l.min, l.product, false) : null,
+      minimo: l.min ? formatStock(l.min, l.product) : null,
       bajo_minimo: l.min !== null && l.qty.lt(l.min),
     }));
     return finish("query_stock", rows, totals);
@@ -362,7 +362,7 @@ export class InventoryTools implements Tools {
     const rows: ToolRow[] = sorted.map((g) => ({
       tipo: MOVEMENT_LABELS[g.type],
       producto: g.product.name,
-      cantidad: formatBase(g.qty.abs(), g.product.baseUnit),
+      cantidad: formatStock(g.qty.abs(), g.product),
       valor: formatMoney(g.value.abs()),
       movimientos: String(g.count),
     }));
@@ -491,9 +491,9 @@ export class InventoryTools implements Tools {
       data: {
         product: l.product!.name,
         venue: locationName(ctx, l.r.locationId),
-        expected: formatBase(l.expected, l.product!.baseUnit),
-        counted: formatBase(l.r.countedQty, l.product!.baseUnit),
-        diff: formatBase(l.diff, l.product!.baseUnit),
+        expected: formatStock(l.expected, l.product!),
+        counted: formatStock(l.r.countedQty, l.product!),
+        diff: formatStock(l.diff, l.product!),
         diff_pct: l.diffPct ? `${formatDecimal(l.diffPct, 1)} %` : "sin stock teórico",
         diff_value: formatMoney(l.diffValue),
       },
@@ -501,9 +501,9 @@ export class InventoryTools implements Tools {
     const rows: ToolRow[] = lines.map((l) => ({
       producto: l.product!.name,
       local: locationName(ctx, l.r.locationId),
-      teorico: formatBase(l.expected, l.product!.baseUnit),
-      contado: formatBase(l.r.countedQty, l.product!.baseUnit),
-      diferencia: formatBase(l.diff, l.product!.baseUnit),
+      teorico: formatStock(l.expected, l.product!),
+      contado: formatStock(l.r.countedQty, l.product!),
+      diferencia: formatStock(l.diff, l.product!),
       diferencia_pct: l.diffPct ? `${formatDecimal(l.diffPct, 1)} %` : null,
       valor: formatMoney(l.diffValue),
       fecha: formatDay(l.r.closedAt.slice(0, 10)),
@@ -522,23 +522,23 @@ export class InventoryTools implements Tools {
       data: {
         product: l.product!.name,
         venue: locationName(ctx, l.lp.locationId),
-        stock: formatBase(l.qty, l.product!.baseUnit),
-        minimum: formatBase(l.min, l.product!.baseUnit),
-        avg_daily_use: formatBase(l.avg.toDecimalPlaces(2), l.product!.baseUnit),
+        stock: formatStock(l.qty, l.product!),
+        minimum: formatStock(l.min, l.product!),
+        avg_daily_use: formatStock(l.avg.toDecimalPlaces(2), l.product!),
         coverage_days: l.coverage ? formatDecimal(l.coverage, 1) : "sin consumo reciente",
-        pending_in: formatBase(l.pendingIn, l.product!.baseUnit),
-        suggested: formatBase(l.suggested.toDecimalPlaces(2), l.product!.baseUnit),
+        pending_in: formatStock(l.pendingIn, l.product!),
+        suggested: formatStock(l.suggested.toDecimalPlaces(2), l.product!),
       },
     }));
     const rows: ToolRow[] = lines.map((l) => ({
       producto: l.product!.name,
       local: locationName(ctx, l.lp.locationId),
-      stock: formatBase(l.qty, l.product!.baseUnit),
-      minimo: formatBase(l.min, l.product!.baseUnit),
-      consumo_diario: formatBase(l.avg.toDecimalPlaces(2), l.product!.baseUnit),
+      stock: formatStock(l.qty, l.product!),
+      minimo: formatStock(l.min, l.product!),
+      consumo_diario: formatStock(l.avg.toDecimalPlaces(2), l.product!),
       dias_cobertura: l.coverage ? formatDecimal(l.coverage, 1) : null,
-      en_camino: l.pendingIn.gt(0) ? formatBase(l.pendingIn, l.product!.baseUnit) : null,
-      sugerido: formatBase(l.suggested.toDecimalPlaces(2), l.product!.baseUnit),
+      en_camino: l.pendingIn.gt(0) ? formatStock(l.pendingIn, l.product!) : null,
+      sugerido: formatStock(l.suggested.toDecimalPlaces(2), l.product!),
     }));
     return finish("query_reorder", rows, { productos: String(lines.length), horizonte: params.horizonLabel }, evalItems);
   }

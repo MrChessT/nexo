@@ -2,6 +2,7 @@
 import Decimal from "decimal.js";
 import type { Pack, Product } from "../domain";
 import { normalize } from "./normalize";
+import { formatStock as formatCounting } from "../../lib/units";
 
 export type ToBaseResult =
   | { ok: true; qtyBase: Decimal; pack: Pack | null; assumed: boolean }
@@ -106,18 +107,20 @@ export function toBase(amountText: string, unit: string | null, product: Product
 }
 
 /**
- * Cantidad de stock como se cuenta en barra: en el formato de conteo («3 × Botella 70 cl») y, si no es
- * la unidad base, también en unidad base entre paréntesis («3 × Botella 70 cl (2,1 l)»). Sin formato de
- * conteo (o si es un kilo), en unidad base.
+ * Cantidad como se cuenta en barra, igual que en la app (src/lib/units.ts): refrescos y cervezas en
+ * cajas y unidades («2 cajas + 5 ud»), destilados y vino en botellas («12 botellas»), barriles,
+ * kilos… Sin ml ni gramos cuando hay un formato.
  */
-export function formatStock(qty: Decimal.Value, product: Pick<Product, "baseUnit" | "packs">, withBase = true): string {
-  const value = new Decimal(qty);
-  const pack = product.packs.find((p) => p.isCountDefault);
-  if (!pack || /^(kg|g|l|ml|cl|unidad|ud)$/i.test(pack.name.trim()) || new Decimal(pack.qtyBase).lte(0) || new Decimal(pack.qtyBase).eq(1)) {
-    return formatBase(value, product.baseUnit);
-  }
-  const packs = `${formatDecimal(value.div(pack.qtyBase), 2)} × ${pack.name}`;
-  return withBase ? `${packs} (${formatBase(value, product.baseUnit)})` : packs;
+export function formatStock(qty: Decimal.Value, product: Pick<Product, "dimension" | "packs">): string {
+  const count = product.packs.find((p) => p.isCountDefault);
+  const box = product.packs
+    .filter((p) => new Decimal(p.qtyBase).gt(1))
+    .sort((a, b) => Number(b.isPurchaseDefault) - Number(a.isPurchaseDefault) || new Decimal(b.qtyBase).cmp(a.qtyBase))[0];
+  return formatCounting(qty, {
+    dimension: product.dimension,
+    countPack: count ? { name: count.name, qtyBase: count.qtyBase } : null,
+    purchasePack: box ? { name: box.name, qtyBase: box.qtyBase } : null,
+  });
 }
 
 /** "1400" ml → "1,4 l" para mostrar. Solo formato; el valor sigue siendo decimal exacto. */

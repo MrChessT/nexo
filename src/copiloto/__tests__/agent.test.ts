@@ -22,7 +22,7 @@ describe("enrutado del agente", () => {
     expect(find(events, "navigate")).toMatchObject({ route: "/stock", auto: false, filters: { locationId: PARADOR!.id } });
     const done = find(events, "done")!;
     expect(done.textSource).toBe("plantilla");
-    expect(done.text).toContain("2,1 l");
+    expect(done.text).toContain("3 botellas");
     expect(done.text).toContain("45,00 €");
     expect(done.text).toContain("por debajo del mínimo");
     expect(audit.events[0]).toMatchObject({ type: "mensaje", intent: "consultar", outcome: "consulta" });
@@ -76,7 +76,7 @@ describe("enrutado del agente", () => {
 
     const second = await run(agent, chat("", { message: BRUGAL, clarification: { clarifyId: clarify.clarifyId, optionId: BRUGAL } }));
     const text = find(second, "done")!.text;
-    expect(text).toContain("7 × Botella 70 cl (4,9 l)");
+    expect(text).toContain("7 botellas (98,00 €)");
     expect(text).toContain("te lo muestro de todos, desglosado por local");
   });
 
@@ -101,7 +101,7 @@ describe("enrutado del agente", () => {
     expect(evalState.horizon).toBe("el fin de semana");
     const vivCoca = evalState.items.find((i) => i.product === "Coca-Cola 20 cl" && i.venue === "Vivero")!;
     // stock 48, consumo 40/día, 48 en camino, mínimo 96, 5 días → 40·5 + 96 − 96 = 200
-    expect(vivCoca).toMatchObject({ stock: "48 ud", avg_daily_use: "40 ud", coverage_days: "1,2", pending_in: "48 ud", suggested: "200 ud" });
+    expect(vivCoca).toMatchObject({ stock: "2 cajas", avg_daily_use: "1 caja + 16 ud", coverage_days: "1,2", pending_in: "2 cajas", suggested: "8 cajas + 8 ud" });
     expect(Object.keys(jev.calls[1]!.questions)).toEqual(expect.arrayContaining(["reponer_0", "urgencia_0"]));
     const text = find(events, "done")!.text;
     expect(text).toContain("Para el fin de semana conviene reponer 4 productos");
@@ -127,7 +127,7 @@ describe("enrutado del agente", () => {
     // Sin valoración de Jev, la reposición se muestra igualmente con las cifras calculadas.
     const reorder = find(await run(agent, chat("/reponer")), "done")!.text;
     expect(reorder).toContain("conviene reponer 5 productos");
-    expect(reorder).toContain("Coca-Cola 20 cl (Vivero): quedan 48 ud, pedir");
+    expect(reorder).toContain("Coca-Cola 20 cl (Vivero): quedan 2 cajas, pedir");
     expect(reorder).toContain("No he podido valorar la urgencia");
   });
 });
@@ -150,8 +150,8 @@ describe("atajos deterministas", () => {
     expect(clarify.options.map((o) => o.id).slice(0, 2).sort()).toEqual([BARCELO, BRUGAL]);
     const events = await run(agent, chat("", { message: BARCELO, clarification: { clarifyId: clarify.clarifyId, optionId: BARCELO } }));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 × Botella 70 cl (2,8 l) en total (60,00 €).");
-    expect(text).toContain("Parador 3 × Botella 70 cl ⚠ · Pickels 1 × Botella 70 cl");
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas en total (60,00 €).");
+    expect(text).toContain("Parador 3 botellas ⚠ · Pickels 1 botella");
     expect(jev.calls).toHaveLength(0);
   });
 
@@ -159,6 +159,6 @@ describe("atajos deterministas", () => {
     const { agent } = makeAgent(new FakeJev());
     const events = await run(agent, chat("/stock coca vivero"));
     expect(find(events, "navigate")!.filters).toMatchObject({ locationId: VIVERO!.id });
-    expect(find(events, "done")!.text).toContain("48 ud");
+    expect(find(events, "done")!.text).toContain("2 cajas");
   });
 });
