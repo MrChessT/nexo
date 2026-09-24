@@ -213,7 +213,7 @@ describe("mínimos y archivar desde el chat", () => {
     const { agent, drafts } = makeAgent(jev);
     const draft = find(await run(agent, chat("pon el mínimo del Barceló en Parador a 6 botellas")), "draft") as MinimumDraft;
     expect(draft).toMatchObject({ kind: "minimo", field: "min_qty", oldValue: "2800", newValue: "4200", baseUnit: "ml", locationName: "Parador" });
-    expect(draft.title).toBe(`Mínimo de ${BARCELO.name} en Parador: 2,8 l → 6 × Botella 70 cl (4,2 l)`);
+    expect(draft.title).toBe(`Mínimo de ${BARCELO.name} en Parador: 4 botellas → 6 botellas`);
     expect(draft.checks!.find((c) => c.id === "stock")).toMatchObject({ status: "aviso" });
 
     const { result, writer } = await confirmDraft(draft, drafts);
@@ -234,7 +234,7 @@ describe("mínimos y archivar desde el chat", () => {
     const draft = find(await run(agent, chat("elimina el ron brugal")), "draft") as ArchiveDraft;
     expect(draft).toMatchObject({ kind: "archivar", productName: BRUGAL.name, stockQty: "4900" });
     expect(draft.warnings[0]).toContain("no borro productos");
-    expect(draft.checks![0]).toMatchObject({ id: "stock", status: "revisar", detail: expect.stringContaining("4,9 l en Parador") });
+    expect(draft.checks![0]).toMatchObject({ id: "stock", status: "revisar", detail: expect.stringContaining("7 botellas en Parador") });
 
     expect((await confirmDraft(draft, drafts)).result).toMatchObject({ ok: false, code: "invalid_edit" });
     const { result, writer } = await confirmDraft(draft, drafts, { acknowledged: true }, 2);

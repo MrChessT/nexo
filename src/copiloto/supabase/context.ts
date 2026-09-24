@@ -8,6 +8,7 @@ interface ProductRow {
   id: string;
   name: string;
   dimension: Dimension;
+  category_id: string | null;
   category: { name: string } | null;
   notes: string | null;
   packs: Array<{ id: string; name: string; qty_base: string; is_count_default: boolean; is_purchase_default: boolean; active: boolean }>;
@@ -33,7 +34,7 @@ export class SupabaseContext implements ContextPort {
       db.from("locations").select("id,name,timezone,day_cutoff").eq("org_id", orgId).eq("active", true).order("name"),
       db
         .from("products")
-        .select("id,name,dimension,notes,category:categories(name),packs:product_packs(id,name,qty_base:qty_base::text,is_count_default,is_purchase_default,active)")
+        .select("id,name,dimension,notes,category_id,category:categories(name),packs:product_packs(id,name,qty_base:qty_base::text,is_count_default,is_purchase_default,active)")
         .eq("org_id", orgId)
         .eq("active", true)
         .order("name"),
@@ -44,7 +45,7 @@ export class SupabaseContext implements ContextPort {
         .eq("location.active", true)
         .order("sort_order"),
       db.from("suppliers").select("id,name").eq("org_id", orgId).eq("active", true).order("name"),
-      db.from("categories").select("id,name").eq("org_id", orgId).order("name"),
+      db.from("categories").select("id,name,parent_id").eq("org_id", orgId).order("name"),
       db.from("products").select("id,name").eq("org_id", orgId).eq("active", false).order("name").limit(2000),
     ]);
     if (membership.error) fail("la pertenencia", membership.error);
@@ -58,6 +59,16 @@ export class SupabaseContext implements ContextPort {
       result.error ? [] : ((result.data ?? []) as Array<{ id: string; name: string }>).map((r) => ({ id: String(r.id), name: String(r.name) }));
 
     const productRows = (products.data ?? []) as unknown as ProductRow[];
+    // Categoría con su familia («Destilados › Ginebra»): el asistente encuentra los productos tanto
+    // por el tipo como por la familia.
+    const categoryRows = (categories.error ? [] : (categories.data ?? [])) as Array<{ id: string; name: string; parent_id: string | null }>;
+    const categoryById = new Map(categoryRows.map((c) => [c.id, c]));
+    const categoryPath = (p: ProductRow): string | null => {
+      const own = (p.category_id && categoryById.get(p.category_id)) || null;
+      const parent = own?.parent_id ? categoryById.get(own.parent_id) : undefined;
+      if (own && parent) return `${parent.name} › ${own.name}`;
+      return own?.name ?? p.category?.name ?? null;
+    };
     const catalogHash = createHash("sha256")
       .update(JSON.stringify(productRows.map((p) => [p.id, p.name, p.category?.name ?? null, p.notes ?? null, p.packs.map((k) => [k.id, k.name, k.qty_base])])))
       .digest("hex")
@@ -79,7 +90,7 @@ export class SupabaseContext implements ContextPort {
         name: p.name,
         dimension: p.dimension,
         baseUnit: baseUnitOf(p.dimension),
-        category: p.category?.name ?? null,
+        category: categoryPath(p),
         notes: p.notes ?? null,
         packs: p.packs
           .filter((k) => k.active)

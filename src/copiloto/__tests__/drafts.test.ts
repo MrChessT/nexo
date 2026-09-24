@@ -34,7 +34,7 @@ describe("borradores desde el chat", () => {
     expect(jev.calls).toHaveLength(2);
     expect(jev.calls[1]!.state).toEqual({
       request: "baja 2 botellas de ron rotas en barra 1",
-      draft: { operation: "write off (merma)", product: BARCELO, quantity: "2 × Botella 70 cl (1,4 l)", venue: "Parador · Barra 1", reason: "rotura" },
+      draft: { operation: "write off (merma)", product: BARCELO, quantity: "2 × Botella 70 cl", venue: "Parador · Barra 1", reason: "rotura" },
     });
     const draft = find(events, "draft") as WasteDraft;
     expect(draft).toMatchObject({
@@ -51,7 +51,7 @@ describe("borradores desde el chat", () => {
       coherence: 0.96,
       warnings: [],
     });
-    expect(draft.title).toBe(`Merma: 2 × Botella 70 cl (1,4 l) de ${BARCELO} en Parador · Barra 1`);
+    expect(draft.title).toBe(`Merma: 2 × Botella 70 cl de ${BARCELO} en Parador · Barra 1`);
     expect((await drafts.get(draft.draftId, fixtureContext().userId, ORG_ID))?.status).toBe("pendiente");
     expect(find(events, "done")!.text).toContain("He preparado un borrador");
     expect(audit.events.map((e) => e.type)).toEqual(["borrador", "mensaje"]);

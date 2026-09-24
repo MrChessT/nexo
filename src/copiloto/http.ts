@@ -1,5 +1,6 @@
 // Endpoints del asistente como funciones de la app (sin servidor aparte). Cada petición trabaja con el
 // JWT del usuario: RLS activo, sin service role. El contrato está en docs/copiloto/CONTRACT.md.
+import { formatStock } from "./entities/units";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Analytics } from "./analytics/analytics";
@@ -246,6 +247,9 @@ async function reorder(url: URL, user: RequestUser): Promise<Response> {
         productName: l.product.name,
         baseUnit: l.product.baseUnit,
         stock: l.qty.toString(),
+        // Como se cuenta en barra («2 cajas + 5 ud», «12 botellas»), para mostrar.
+        stockText: formatStock(l.qty, l.product),
+        pendingInText: formatStock(l.pendingIn, l.product),
         min: l.min.toString(),
         par: l.par.toString(),
         pendingIn: l.pendingIn.toString(),

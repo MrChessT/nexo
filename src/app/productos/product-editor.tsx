@@ -5,7 +5,7 @@ import { Archive, ArchiveRestore, Plus, Star, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Decimal from "decimal.js";
 import { euros as money, inputText as show } from "@/lib/format";
-import { formatQuantity, type UnitDimension } from "@/lib/units";
+import { formatStock, type CountingPacks, type UnitDimension } from "@/lib/units";
 import "./product-editor.css";
 
 // Ficha de producto: datos generales, formatos, precios por proveedor y mínimos por local.
@@ -561,7 +561,7 @@ export function ProductEditor({ productId, onClose, onChanged }: { productId: st
               <div className="span-2 editor-summary">
                 <div><span>Formato de compra</span><strong>{mainPack ? `${mainPack.name}` : "Sin definir"}</strong></div>
                 <div><span>Proveedores</span><strong>{new Set(d.prices.map((r) => r.supplierId)).size}</strong></div>
-                <div><span>Stock total</span><strong>{formatQuantity([...data.stock.values()].reduce((a, b) => a + b, 0), d.dimension)}</strong></div>
+                <div><span>Stock total</span><strong>{formatStock([...data.stock.values()].reduce((a, b) => a + b, 0), countingPacks(d))}</strong></div>
               </div>
             </div>
           )}
@@ -696,7 +696,7 @@ export function ProductEditor({ productId, onClose, onChanged }: { productId: st
                       <strong>{loc.name}</strong>
                       <input type="checkbox" checked={l.enabled} onChange={(e) => patchLocation(loc.id, { enabled: e.target.checked })} aria-label={`Activo en ${loc.name}`} />
                       <span className={low ? "stock-low" : undefined}>
-                        {formatQuantity(qty, d.dimension, mainPack && packQtyBase(mainPack, d) > 0 ? { name: mainPack.name, qtyBase: String(packQtyBase(mainPack, d)) } : undefined)}
+                        {formatStock(qty, countingPacks(d))}
                       </span>
                       <input inputMode="decimal" disabled={!l.enabled} value={l.min} onChange={(e) => patchLocation(loc.id, { min: e.target.value })} placeholder="0" />
                       <input inputMode="decimal" disabled={!l.enabled} value={l.par} onChange={(e) => patchLocation(loc.id, { par: e.target.value })} placeholder="0" />
@@ -748,6 +748,18 @@ export function ProductEditor({ productId, onClose, onChanged }: { productId: st
     };
     patch({ qtyUnit: next, locations: d.locations.map((l) => ({ ...l, min: convert(l.min), par: convert(l.par) })) });
   }
+}
+
+/** Formatos para mostrar el stock como se cuenta: la botella (o barril, kg…) y la caja de varias unidades. */
+function countingPacks(d: Draft): CountingPacks {
+  const active = d.packs.filter((k) => k.active && packQtyBase(k, d) > 0);
+  const count = active.find((k) => k.countDefault);
+  const box = [...active].filter((k) => packQtyBase(k, d) > 1).sort((a, b) => Number(b.purchaseDefault) - Number(a.purchaseDefault) || packQtyBase(b, d) - packQtyBase(a, d))[0];
+  return {
+    dimension: d.dimension,
+    countPack: count ? { name: count.name, qtyBase: String(packQtyBase(count, d)) } : null,
+    purchasePack: box ? { name: box.name, qtyBase: String(packQtyBase(box, d)) } : null,
+  };
 }
 
 function packQtyBase(pack: PackDraft, d: Draft): number {

@@ -15,7 +15,7 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeText } from "@/lib/format";
-import { formatQuantity, type UnitDimension } from "@/lib/units";
+import { formatStock, type Pack, type UnitDimension } from "@/lib/units";
 import { ProductEditor } from "./product-editor";
 import "./productos.css";
 
@@ -47,15 +47,19 @@ type Item = {
   dimension: UnitDimension;
   active: boolean;
   category: string | null;
+  /** Familia de la categoría (Destilados, Refrescos y mixers…) si la categoría es un tipo. */
+  family?: string | null;
   packs: number;
   main_pack: string | null;
+  count_pack?: { name: string; qty: string } | null;
+  purchase_pack?: { name: string; qty: string } | null;
   suppliers: string[];
   locations: number;
   stock_qty: string;
   low_stock: boolean;
 };
 
-type Option = { id: string; name: string; count: number };
+type Option = { id: string; name: string; count: number; parent_id?: string | null };
 
 type SearchResult = {
   total: number;
@@ -70,6 +74,8 @@ type SearchResult = {
     locations: Option[];
   };
 };
+
+const pack = (p: { name: string; qty: string } | null | undefined): Pack | null => (p ? { name: p.name, qtyBase: p.qty } : null);
 
 const EMPTY: Filters = { q: "", cat: "", prov: "", local: "", medida: "", estado: "active", stock: "", orden: "name", pag: 1 };
 
@@ -158,7 +164,11 @@ function FacetList({
   const visible = options
     .filter((o) => o.count > 0 || o.id === value)
     .filter((o) => !filter || normalizeText(o.name).includes(normalizeText(filter)));
-  const shown = expanded || filter ? visible : visible.slice(0, 8);
+  // En árbol (familias y sus tipos) se muestran primero todas las familias; los tipos, al desplegar
+  // o al buscar, o los de la familia elegida.
+  const tree = options.some((o) => o.parent_id);
+  const selectedFamily = options.find((o) => o.id === value)?.parent_id ?? value;
+  const shown = expanded || filter ? visible : tree ? visible.filter((o) => !o.parent_id || o.parent_id === selectedFamily) : visible.slice(0, 8);
   if (options.length === 0) return null;
   return (
     <div className="facet">
@@ -167,14 +177,19 @@ function FacetList({
         <input className="facet-search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Buscar ${title.toLowerCase()}`} />
       )}
       {shown.map((o) => (
-        <button key={o.id} className={`facet-option ${value === o.id ? "active" : ""}`} onClick={() => onChange(value === o.id ? "" : o.id)}>
+        <button key={o.id} className={`facet-option ${o.parent_id ? "facet-child" : ""} ${value === o.id ? "active" : ""}`} onClick={() => onChange(value === o.id ? "" : o.id)}>
           <span>{o.name}</span>
           <b>{o.count}</b>
         </button>
       ))}
-      {!filter && visible.length > 8 && (
-        <button className="facet-more" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Ver menos" : `Ver ${visible.length - 8} más`}
+      {!filter && visible.length > shown.length && !expanded && (
+        <button className="facet-more" onClick={() => setExpanded(true)}>
+          {tree ? "Ver todos los tipos" : `Ver ${visible.length - shown.length} más`}
+        </button>
+      )}
+      {!filter && expanded && (
+        <button className="facet-more" onClick={() => setExpanded(false)}>
+          Ver menos
         </button>
       )}
       {visible.length === 0 && <p className="facet-none">Sin coincidencias</p>}
@@ -273,7 +288,12 @@ export default function ProductsPage() {
   const nameOf = (list: Option[] | undefined, id: string) => list?.find((o) => o.id === id)?.name ?? "…";
   const chips: Array<{ label: string; clear: () => void }> = [];
   if (filters.q) chips.push({ label: `“${filters.q}”`, clear: () => { setQuery(""); update({ q: "" }); } });
-  if (filters.cat) chips.push({ label: filters.cat === "sin" ? "Sin categoría" : nameOf(facets?.categories, filters.cat), clear: () => update({ cat: "" }) });
+  const categoryLabel = (id: string) => {
+    const option = facets?.categories.find((o) => o.id === id);
+    const family = option?.parent_id ? facets?.categories.find((o) => o.id === option.parent_id)?.name : null;
+    return family ? `${family} · ${option!.name}` : nameOf(facets?.categories, id);
+  };
+  if (filters.cat) chips.push({ label: filters.cat === "sin" ? "Sin categoría" : categoryLabel(filters.cat), clear: () => update({ cat: "" }) });
   if (filters.prov) chips.push({ label: nameOf(facets?.suppliers, filters.prov), clear: () => update({ prov: "" }) });
   if (filters.local) chips.push({ label: nameOf(facets?.locations, filters.local), clear: () => update({ local: "" }) });
   if (filters.medida) chips.push({ label: dimensionLabels[filters.medida], clear: () => update({ medida: "" }) });
@@ -467,7 +487,7 @@ export default function ProductsPage() {
                       <span>
                         <strong>{product.name}</strong>
                         <small>
-                          {product.category ?? "Sin categoría"}
+                          {product.category ? (product.family ? `${product.family} · ${product.category}` : product.category) : "Sin categoría"}
                           {product.sku ? ` · ${product.sku}` : ""}
                         </small>
                       </span>
@@ -480,7 +500,7 @@ export default function ProductsPage() {
                       {product.suppliers.length ? product.suppliers.join(", ") : <em className="muted">—</em>}
                     </span>
                     <span className={product.low_stock ? "stock-low" : undefined}>
-                      {product.locations === 0 ? <em className="muted">Sin local</em> : formatQuantity(product.stock_qty, product.dimension)}
+                      {product.locations === 0 ? <em className="muted">Sin local</em> : formatStock(product.stock_qty, { dimension: product.dimension, countPack: pack(product.count_pack), purchasePack: pack(product.purchase_pack) })}
                       {product.low_stock && <small> · bajo mínimo</small>}
                     </span>
                     <span className={`active-status ${product.active ? "" : "inactive-status"}`}>

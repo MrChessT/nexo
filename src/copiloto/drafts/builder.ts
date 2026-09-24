@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import Decimal from "decimal.js";
 import type { CountCloseDraft, Draft, ReceiptDraft, Role, TransferDraft, WasteDraft } from "../contract/index";
 import { hasRole, type Pack, type Product, type SessionContext } from "../domain";
-import { formatBase, formatDecimal, formatMoney, toBase, unitReadings } from "../entities/units";
+import { formatDecimal, formatMoney, formatStock, toBase, unitReadings } from "../entities/units";
 import type { ActionPlan, CatalogPlan, ClarifyPlan, ResolvedProduct } from "../agent/interpret";
 import type { NavigateEvent } from "../contract/index";
 import { CatalogDraftBuilder, type Review } from "./catalog-builder";
@@ -73,11 +73,9 @@ function locationName(ctx: SessionContext, id: string): string {
   return ctx.locations.find((l) => l.id === id)?.name ?? "local";
 }
 
+/** «2 × Botella 70 cl», «3 × Caja 24» o, sin formato, como se cuenta («6 ud», «1,5 kg»). Sin ml. */
 function describeInput(q: Quantity, product: Product): string {
-  const amount = formatDecimal(q.input.amount, 4);
-  const human = q.pack ? `${amount} × ${q.pack.name}` : `${amount} ${q.input.unit}`;
-  const base = formatBase(q.qtyBase, product.baseUnit);
-  return q.pack || q.input.unit !== product.baseUnit ? `${human} (${base})` : base;
+  return q.pack ? `${formatDecimal(q.input.amount, 4)} × ${q.pack.name}` : formatStock(q.qtyBase, product);
 }
 
 export interface BuildInput {
@@ -119,7 +117,7 @@ export class DraftBuilder {
   private async stockWarning(source: InventoryDataSource, locationId: string, product: Product, qty: Decimal): Promise<string | null> {
     const [balance] = await source.balances({ locationIds: [locationId], productIds: [product.id] });
     const available = new Decimal(balance?.qty ?? 0);
-    return qty.gt(available) ? `Solo constan ${formatBase(available, product.baseUnit)} de ${product.name} en stock.` : null;
+    return qty.gt(available) ? `Solo constan ${formatStock(available, product)} de ${product.name} en stock.` : null;
   }
 
   private async waste({ plan, ctx, source, overrides, now }: BuildInput): Promise<BuildResult> {

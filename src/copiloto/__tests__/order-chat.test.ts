@@ -26,7 +26,7 @@ describe("pedidos desde el chat", () => {
       [SUR.name, [[COCA.name, "Caja 24 ud", "7", "13.2"]]],
       [CANARIAS.name, [[BARCELO.name, "Caja 6 botellas", "1", "92.4"]]],
     ]);
-    expect(draft.orders[0]!.lines[0]!.note).toBe("quedan 30 ud · para 1,5 días");
+    expect(draft.orders[0]!.lines[0]!.note).toBe("quedan 1 caja + 6 ud · para 1,5 días");
 
     // Al confirmar se crea un pedido en borrador por proveedor; la línea a 0 se quita.
     const writer = new FixtureWriter();

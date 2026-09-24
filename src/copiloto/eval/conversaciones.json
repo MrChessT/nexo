@@ -33,7 +33,7 @@
         "usuario": "cajas",
         "espera": {
           "borrador": "traspaso",
-          "titulo": "3 × Caja 6 (12,6 l) de Larios 12"
+          "titulo": "3 × Caja 6 de Larios 12"
         }
       }
     ]
@@ -68,7 +68,7 @@
         "boton": "Unidades sueltas",
         "espera": {
           "borrador": "traspaso",
-          "titulo": "Traspaso Vivero → Pickels: 100 ud de Heineken tercio 33 cl"
+          "titulo": "Traspaso Vivero → Pickels: 4 cajas + 4 ud de Heineken tercio 33 cl"
         }
       }
     ]
@@ -99,7 +99,7 @@
         "usuario": "larios",
         "espera": {
           "borrador": "merma",
-          "titulo": "2 × Botella 70 cl (1,4 l) de Larios 12 en Vivero"
+          "titulo": "2 × Botella 70 cl de Larios 12 en Vivero"
         }
       }
     ]
@@ -282,7 +282,7 @@
         "usuario": "1 botella",
         "espera": {
           "borrador": "merma",
-          "titulo": "1 × Botella 70 cl (700 ml) de Larios 12"
+          "titulo": "1 × Botella 70 cl de Larios 12"
         }
       }
     ]

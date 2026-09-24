@@ -53,3 +53,12 @@ begin
     (v_org_id, v_pickels, v_coca, 'opening', 3300, 0.001515, 'Apertura inicial de inventario'),
     (v_org_id, v_pickels, v_estrella, 'opening', 2500, 0.0016, 'Apertura inicial de inventario');
 end $$;
+
+-- Catálogo en familias y tipos, y bebidas por unidades (migración 0016). Si la migración aún no se
+-- ha aplicado, no hace nada.
+do $$
+begin
+  if to_regprocedure('catalog_organize()') is not null then
+    perform catalog_organize();
+  end if;
+end $$;

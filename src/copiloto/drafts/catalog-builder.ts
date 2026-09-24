@@ -28,7 +28,7 @@ import {
 } from "../entities/catalog-parser";
 import { normalize } from "../entities/normalize";
 import { lexicalScore } from "../entities/retriever";
-import { formatBase, formatDecimal, formatMoney } from "../entities/units";
+import { formatDecimal, formatMoney, formatStock } from "../entities/units";
 import { asChoice, asNoul, gateChoice, gateNoulNo, gateNoulYes } from "../gates/gate";
 import type { Thresholds } from "../gates/thresholds";
 import { minimumQuestions, newProductQuestions, NINGUNO, priceChangeQuestions, type Medida } from "../jev/catalog";
@@ -493,7 +493,7 @@ export class CatalogDraftBuilder {
     const stock = new Decimal(balances[0]?.qty ?? 0);
     const newValue = q.qtyBase;
     const location = ctx.locations.find((l) => l.id === locationId)!;
-    const fmt = (v: Decimal.Value) => formatBase(v, product.baseUnit);
+    const fmt = (v: Decimal.Value) => formatStock(v, product);
     if (oldValue && oldValue.eq(newValue)) {
       return { kind: "error", message: `El ${levelName} de ${product.name} en ${location.name} ya es ${fmt(newValue)}.` };
     }
@@ -513,7 +513,8 @@ export class CatalogDraftBuilder {
 
     const warnings = [...q.warnings];
     if (plan.locationOutcome === "confirmar") warnings.push("Revisa el local.");
-    const described = q.pack ? `${formatDecimal(q.input.amount, 4)} × ${q.pack.name} (${fmt(newValue)})` : fmt(newValue);
+    // «2 × Caja 6 (12 botellas)»; si el formato ya es el de contar, basta «6 botellas».
+    const described = q.pack && !q.pack.isCountDefault ? `${formatDecimal(q.input.amount, 4)} × ${q.pack.name} (${fmt(newValue)})` : fmt(newValue);
     const draft: MinimumDraft = {
       ...draftBase("minimo", `${levelName === "mínimo" ? "Mínimo" : "Objetivo"} de ${product.name} en ${location.name}: ${oldValue ? `${fmt(oldValue)} → ` : ""}${described}`, ctx, warnings, now),
       kind: "minimo",
@@ -574,7 +575,7 @@ export class CatalogDraftBuilder {
         : horizon(periodo, today);
     const chosenSupplier = ctx.suppliers.find((s) => s.id === overrides.proveedor) ?? mentionedSupplier(message, ctx.suppliers);
     const purchasePack = (p: Product): Pack | null => p.packs.find((k) => k.isPurchaseDefault) ?? (p.packs.length === 1 ? p.packs[0]! : null);
-    const fmt = (v: Decimal.Value, p: Product) => formatBase(v, p.baseUnit);
+    const fmt = (v: Decimal.Value, p: Product) => formatStock(v, p);
 
     type Wanted = { product: Product; pack: Pack; packs: Decimal; note: string };
     const wanted: Wanted[] = [];
@@ -727,7 +728,7 @@ export class CatalogDraftBuilder {
             "stock",
             "Stock",
             "revisar",
-            `Aún quedan ${formatBase(total, product.baseUnit)} en ${withStock.map((b) => ctx.locations.find((l) => l.id === b.locationId)?.name ?? "?").join(", ")}. Seguirán contando en el valor del stock.`,
+            `Aún quedan ${formatStock(total, product)} en ${withStock.map((b) => ctx.locations.find((l) => l.id === b.locationId)?.name ?? "?").join(", ")}. Seguirán contando en el valor del stock.`,
           )
         : check("stock", "Stock", "ok", "No queda stock en ningún local."),
     );

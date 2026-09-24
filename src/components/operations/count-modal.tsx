@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import Decimal from "decimal.js";
 import { ArrowLeft, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { euros, normalizeText, parseDecimal as parse, quantity as show } from "@/lib/format";
+import { euros, normalizeText, parseDecimal as parse, quantity } from "@/lib/format";
+import { formatStock, type CountingPacks } from "@/lib/units";
 
 // Conteo de inventario en dos pasos:
 //   1) contar en el formato habitual (botellas, cajas…) y guardar las líneas (se pueden ir sumando);
 //   2) revisar las diferencias con su valor y cerrar. Lo que falta puede registrarse como CONSUMO:
 //      en un bar sin TPV es el consumo real del periodo y alimenta informes y reposición.
 
-type Product = { id: string; name: string; base_unit: string };
+type Product = { id: string; name: string; base_unit: string; packs?: CountingPacks };
 type Pack = { id: string; productId: string; name: string; qtyBase: string; isCountDefault: boolean };
 type Entry = { qty: string; unit: string }; // unit: "base" o id de formato
 type PreviewRow = { productId: string; name: string; unit: string; expected: Decimal; counted: Decimal; diff: Decimal; value: Decimal };
@@ -71,6 +72,11 @@ export function CountModal({
 
   const defaultUnit = (productId: string) => packs.get(productId)?.find((p) => p.isCountDefault)?.id ?? "base";
   const entryOf = (productId: string): Entry => entries[productId] ?? { qty: "", unit: defaultUnit(productId) };
+  // Como se cuenta en barra (botellas, cajas + ud…) si se conocen los formatos; si no, en unidad base.
+  const show = (q: Decimal, productId: string, unit: string) => {
+    const packs = products.find((p) => p.id === productId)?.packs;
+    return packs ? formatStock(q, packs) : quantity(q, unit);
+  };
   const factor = (productId: string, unit: string) => (unit === "base" ? new Decimal(1) : new Decimal(packs.get(productId)?.find((p) => p.id === unit)?.qtyBase ?? 1));
 
   const visible = useMemo(() => {
@@ -204,8 +210,8 @@ export function CountModal({
                     <span>
                       {product.name}
                       <small>
-                        {already ? `Ya contado: ${show(already, product.base_unit)}` : "Sin contar"}
-                        {typed && entry.unit !== "base" ? ` · ${show(typed.mul(factor(product.id, entry.unit)), product.base_unit)}` : ""}
+                        {already ? `Ya contado: ${show(already, product.id, product.base_unit)}` : "Sin contar"}
+                        {typed && entry.unit !== "base" ? ` · ${show(typed.mul(factor(product.id, entry.unit)), product.id, product.base_unit)}` : ""}
                       </small>
                     </span>
                     <input
@@ -249,8 +255,8 @@ export function CountModal({
               {changes.length === 0 && <p className="count-empty">Todo cuadra: no hay diferencias con el stock esperado.</p>}
               {changes.map((r) => (
                 <div className="count-review-row" key={r.productId}>
-                  <span><b>{r.name}</b><small>esperado {show(r.expected, r.unit)} · contado {show(r.counted, r.unit)}</small></span>
-                  <span className={r.diff.lt(0) ? "negative" : "positive"}>{r.diff.gt(0) ? "+" : ""}{show(r.diff, r.unit)}</span>
+                  <span><b>{r.name}</b><small>esperado {show(r.expected, r.productId, r.unit)} · contado {show(r.counted, r.productId, r.unit)}</small></span>
+                  <span className={r.diff.lt(0) ? "negative" : "positive"}>{r.diff.gt(0) ? "+" : ""}{show(r.diff, r.productId, r.unit)}</span>
                   <span className={r.value.lt(0) ? "negative" : "positive"}>{euros(r.value)}</span>
                 </div>
               ))}

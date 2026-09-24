@@ -30,7 +30,7 @@ begin
   values (v_product, 'Botella 330 ml', 330, true, true);
 
   insert into products (org_id, category_id, name, dimension, sku)
-  values (v_org_id, v_cat_cerveza, 'Estrella Galicia', 'volume', 'CER-001') returning id into v_product;
+  values (v_org_id, v_cat_cerveza, 'Estrella Galicia', 'volume', 'CER-EG1') returning id into v_product;
   insert into product_packs (product_id, name, qty_base, is_count_default, is_purchase_default)
   values (v_product, 'Botellin 250 ml', 250, true, true);
 
