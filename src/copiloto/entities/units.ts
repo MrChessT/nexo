@@ -32,6 +32,22 @@ const PACK_HINTS: Record<string, string[]> = {
   tercio: ["tercio", "botellin", "33"],
 };
 
+/** ¿Este formato es de esa unidad? ("caja" → "Caja 6 botellas"). */
+export function packMatchesUnit(pack: Pick<Pack, "name">, unit: string): boolean {
+  const name = normalize(pack.name);
+  return (PACK_HINTS[unit] ?? [unit]).some((hint) => name.includes(hint));
+}
+
+/**
+ * Lecturas posibles de una cantidad sin unidad («5 de ron»): los formatos del producto (el de conteo
+ * primero) y, si se cuenta por unidades y ningún formato es la unidad suelta, también esta ("base").
+ */
+export function unitReadings(product: Product): Array<Pack | "base"> {
+  const packs = [...product.packs].sort((a, b) => Number(b.isCountDefault) - Number(a.isCountDefault) || Number(b.isPurchaseDefault) - Number(a.isPurchaseDefault));
+  if (product.dimension !== "count" || packs.some((p) => new Decimal(p.qtyBase).eq(1))) return packs;
+  return ["base", ...packs];
+}
+
 function defaultPack(product: Product): Pack | null {
   const active = product.packs;
   return (
@@ -58,7 +74,8 @@ export function toBase(amountText: string, unit: string | null, product: Product
 
   if (unit === "ud" || unit === null) {
     if (product.dimension === "count") return { ok: true, qtyBase: amount, pack: null, assumed: unit === null };
-    // "2 ron" o "2 ud de ron" en un producto por volumen: se entiende el formato habitual (botella).
+    // "2 ud de ron" en un producto por volumen: se entiende el formato habitual (botella). Sin unidad,
+    // los borradores preguntan antes el formato si hay varios (ver resolveQuantity).
     const pack = defaultPack(product);
     if (pack) return { ok: true, qtyBase: amount.mul(pack.qtyBase), pack, assumed: true };
     return product.packs.length > 1 ? { ok: false, reason: "ambiguous_pack", options: product.packs } : { ok: false, reason: "unknown_unit" };

@@ -27,6 +27,7 @@ import { HabitsStore } from "./habits";
 import type { Draft } from "../contract/index";
 import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
+import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
 
 /** Confirma un borrador con el mismo servicio (y las mismas comprobaciones) que el botón. */
 export type ConfirmDraft = (draftId: string) => Promise<ConfirmResponse>;
@@ -125,24 +126,43 @@ export class Agent {
       let plan: Plan | null = null;
       let shortcut = false;
 
+      // Un borrador que ya se confirmó (con el botón), se descartó o caducó no espera respuesta.
+      await this.dropStaleDraft(session, ctx, deps.drafts);
+
       // Respuesta a una aclaración: se reutiliza la llamada nº 1 con la decisión forzada.
       const pending = req.clarification ? session.clarifies.get(req.clarification.clarifyId) : undefined;
       if (pending && req.clarification) {
         session.clarifies.delete(pending.clarifyId);
-        message = pending.message;
-        page = pending.page;
-        pageContext = pending.pageContext;
-        const option = req.clarification.optionId;
+        let option: string | null = req.clarification.optionId;
+        let typed: Extract<FreeTextAnswer, { kind: "quantity" }> | null = null;
+        const text = (req.clarification.freeText ?? req.message).trim();
         if (option === "otra" || !pending.optionIds.includes(option)) {
-          message = `${pending.message}. ${req.clarification.freeText ?? req.message}`.slice(0, 1000);
-        } else if (pending.fromShortcut) {
+          // Escrito a mano: primero como respuesta a esta pregunta (una opción o una cantidad).
+          const read = readFreeText(pending, text, ctx);
+          option = read.kind === "option" ? read.optionId : null;
+          if (read.kind === "quantity" && pending.routing) typed = read;
+        }
+        if (option !== null && pending.fromShortcut) {
+          message = pending.message;
+          page = pending.page;
+          pageContext = pending.pageContext;
           const product = ctx.products.find((p) => p.name === option);
           plan = await resolveShortcut(pending.message, ctx, deps.retriever, pageContext?.locationId, product);
           shortcut = true;
-        } else {
-          overrides = { ...pending.overrides, [overrideKey(pending, option)]: overrideValue(option) };
+        } else if ((option !== null || typed) && pending.routing) {
+          message = pending.message;
+          page = pending.page;
+          pageContext = pending.pageContext;
+          overrides = option !== null ? { ...pending.overrides, [overrideKey(pending, option)]: overrideValue(option) } : quantityOverrides(pending, typed!);
           reuse = pending.routing;
+        } else if (ENTITY_FIELDS.has(pending.field) && !pending.restart) {
+          // Falta un dato de la orden y no encaja con ninguna opción: se completa la orden original.
+          message = `${pending.message}. ${text}`.slice(0, 1000);
+          page = pending.page;
+          pageContext = pending.pageContext;
+          overrides = fieldOverrides(pending.overrides);
         }
+        // Si no, lo escrito es un mensaje nuevo: la orden anterior no se arrastra.
       }
 
       if (!plan && !reuse && isShortcut(message)) {
@@ -200,7 +220,8 @@ export class Agent {
       }
 
       const written = await timer.time("redaccion", () => deps.writer.write(report, emit));
-      deps.sessions.addTurn(session, { role: "user", text: message });
+      // En el historial va lo que el usuario dijo (no la orden original que se reutiliza al aclarar).
+      deps.sessions.addTurn(session, { role: "user", text: req.clarification ? req.clarification.freeText ?? req.message : message });
       deps.sessions.addTurn(session, { role: "assistant", text: written.text });
       timer.flush(deps.metrics);
       await deps.sessions.save(req.sessionId, ctx.orgId, session).catch(() => undefined);
@@ -231,6 +252,17 @@ export class Agent {
     }
   }
 
+  private async dropStaleDraft(session: Session, ctx: SessionContext, drafts: DraftStore): Promise<void> {
+    const draftId = session.focus?.draftId;
+    if (!draftId || !session.focus) return;
+    const stored = await drafts.get(draftId, ctx.userId, ctx.orgId).catch(() => undefined);
+    if (stored && stored.status === "pendiente" && new Date(stored.draft.expiresAt).getTime() >= this.now().getTime()) return;
+    const { draftId: _draftId, draftTitle: _draftTitle, ...rest } = session.focus;
+    void _draftId;
+    void _draftTitle;
+    session.focus = rest;
+  }
+
   private async clarify(plan: ClarifyPlan, env: ExecEnv): Promise<ReportOutcome> {
     const clarify: ClarifyEvent = {
       clarifyId: randomUUID().slice(0, 12),
@@ -244,6 +276,8 @@ export class Agent {
       field: plan.field,
       ...(plan.segmentIndex !== undefined ? { segmentIndex: plan.segmentIndex } : {}),
       optionIds: plan.options.map((o) => o.id),
+      optionLabels: plan.options.map((o) => o.label),
+      ...(plan.restart ? { restart: true } : {}),
       message: env.message,
       page: env.page,
       ...(env.pageContext ? { pageContext: env.pageContext } : {}),
@@ -298,7 +332,7 @@ export class Agent {
       env.decisions.push({ id: "coherencia", label: "Coherencia del borrador", value: gate, valueLabel: gate === "actuar" ? "Coincide con la petición" : "Revisar", probability: coherence, confidence: null, gate });
       if (gate === "preguntar") {
         return this.clarify(
-          { type: "clarify", field: "tipo_accion", question: "No estoy seguro de haber entendido la operación. ¿Me la repites con el producto, la cantidad y el local?", options: [] },
+          { type: "clarify", field: "tipo_accion", question: "No estoy seguro de haber entendido la operación. ¿Me la repites con el producto, la cantidad y el local?", options: [], restart: true },
           env,
         );
       }
@@ -492,6 +526,16 @@ function overrideKey(pending: PendingClarify, option: string): string {
 
 function overrideValue(option: string): string {
   return option.startsWith("pack:") ? option.slice(5) : option;
+}
+
+/** Cantidad escrita a mano: sustituye a la del mensaje (y a la confirmación o el formato anteriores). */
+function quantityOverrides(pending: PendingClarify, typed: { amount: string; unit: string | null }): Record<string, string> {
+  const i = pending.segmentIndex ?? 0;
+  const { [`cantidad_ok_${i}`]: _ok, [`unidad_${i}`]: _pack, [`unidad_texto_${i}`]: _unit, ...rest } = pending.overrides;
+  void _ok;
+  void _pack;
+  void _unit;
+  return { ...rest, [`cantidad_${i}`]: typed.amount, ...(typed.unit ? { [`unidad_texto_${i}`]: typed.unit } : {}) };
 }
 
 function daysInclusive(from: string, to: string): number {

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import Decimal from "decimal.js";
 import type { CountCloseDraft, Draft, ReceiptDraft, Role, TransferDraft, WasteDraft } from "../contract/index";
 import { hasRole, type Pack, type Product, type SessionContext } from "../domain";
-import { formatBase, formatDecimal, formatMoney, toBase } from "../entities/units";
+import { formatBase, formatDecimal, formatMoney, toBase, unitReadings } from "../entities/units";
 import type { ActionPlan, CatalogPlan, ClarifyPlan, ResolvedProduct } from "../agent/interpret";
 import type { NavigateEvent } from "../contract/index";
 import { CatalogDraftBuilder, type Review } from "./catalog-builder";
@@ -322,17 +322,38 @@ export class DraftBuilder {
   }
 }
 
-/** Cantidad en unidad base. Si el formato es ambiguo o incompatible, devuelve una aclaración. */
+/** Opción «unidades sueltas» de la pregunta de formato (productos que se cuentan por unidades). */
+export const BASE_PACK = "base";
+
+/**
+ * Cantidad en unidad base. Si el formato es ambiguo o incompatible, devuelve una aclaración. Sin
+ * unidad («5 de ron») y con más de una lectura posible (botellas o cajas) también se pregunta.
+ */
 export function resolveQuantity(p: ResolvedProduct, overrides: Record<string, string>): Quantity | ClarifyPlan {
   const packOverride = overrides[`unidad_${p.segmentIndex}`];
   const warnings: string[] = [];
   if (p.productOutcome === "confirmar") warnings.push(`Revisa el producto: ${p.product.name}.`);
   if (p.quantityOutcome === "confirmar") warnings.push(`Revisa la cantidad de ${p.product.name}.`);
 
-  if (packOverride) {
+  if (packOverride && p.amount) {
+    if (packOverride === BASE_PACK) {
+      return { qtyBase: new Decimal(p.amount), pack: null, input: { amount: p.amount, unit: p.product.baseUnit }, warnings };
+    }
     const pack = p.product.packs.find((k) => k.id === packOverride);
-    if (pack && p.amount) {
+    if (pack) {
       return { qtyBase: new Decimal(p.amount).mul(pack.qtyBase), pack, input: { amount: p.amount, unit: pack.name, packId: pack.id }, warnings };
+    }
+  }
+  if (p.unit === null && p.amount !== null) {
+    const readings = unitReadings(p.product);
+    if (readings.length > 1) {
+      return {
+        type: "clarify",
+        field: "cantidad",
+        question: `¿En qué formato son las ${formatDecimal(p.amount, 4)} de ${p.product.name}?`,
+        options: readings.slice(0, 4).map((k) => (k === BASE_PACK ? { id: `pack:${BASE_PACK}`, label: "Unidades sueltas", probability: null } : { id: `pack:${k.id}`, label: k.name, probability: null })),
+        segmentIndex: p.segmentIndex,
+      };
     }
   }
   const result = toBase(p.amount!, p.unit, p.product);

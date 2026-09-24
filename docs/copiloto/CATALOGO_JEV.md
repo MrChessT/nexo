@@ -69,7 +69,7 @@ Catálogo `2026-09-24.8`. Todo medido con Jev real antes de adoptarlo.
 | `intent.consultar` | Ahora incluye compras, gasto y pedidos | «¿cuánto he gastado este mes?» pasaba por fuera de ámbito (0,65); ahora consultar (0,89). Lo ajeno sigue en 1,00 |
 | Valoración `pedido`, `conteo` | Avisos proactivos: pedidos retrasados o borradores olvidados; locales sin inventario reciente | Prioriza lo grave (local sin contar 60+ días 0,95; pedido retrasado 0,87) sobre lo menor (borrador de ayer 0,60; contado hace 16 días 0,51) |
 
-Hábitos por usuario (tabla `copilot_profiles`): el local habitual (≥ 5 usos y ≥ 70 %) solo se propone marcado «Revisa el local», y los productos frecuentes solo ordenan las opciones de una aclaración.
+Hábitos por usuario (tabla `copilot_profiles`): el local habitual (≥ 5 usos y ≥ 70 %) nunca se elige solo: si una operación no dice el local se pregunta, con el habitual como primera opción. Los productos frecuentes solo ordenan las opciones de una aclaración.
 
 Evaluación completa (64 frases): 94 % correcto, 6 % preguntas de más, **0 borradores equivocados**.
 

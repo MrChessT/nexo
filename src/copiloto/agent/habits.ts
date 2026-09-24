@@ -1,6 +1,6 @@
 // Memoria del negocio por usuario: qué locales y productos usa más. Solo contadores.
-// Se usa con prudencia: el local habitual se propone marcado «Revisa el local» y los productos
-// frecuentes solo ordenan las opciones de una aclaración; nunca deciden por el usuario.
+// Se usa con prudencia: el local habitual y los productos frecuentes solo ordenan las opciones de
+// una aclaración (el habitual va primero); nunca deciden por el usuario.
 import { LruCache } from "../cache/lru";
 
 export interface Habits {
