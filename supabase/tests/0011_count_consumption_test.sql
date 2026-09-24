@@ -1,5 +1,7 @@
 begin;
 
+create extension if not exists pgtap with schema extensions;
+
 select plan(7);
 
 -- Local con dos productos: al contar falta ron (consumo) y sobra agua (ajuste).
