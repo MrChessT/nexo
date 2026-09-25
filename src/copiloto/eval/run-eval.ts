@@ -2,6 +2,7 @@
 //   npm run copiloto:eval                  → todas las frases de eval/frases.jsonl
 //   npm run copiloto:eval -- --only 5      → las 5 primeras
 //   npm run copiloto:eval -- --grupo jerga → solo un grupo (natural, jerga, erratas, dato…)
+//   npm run copiloto:eval -- --frases f.jsonl → otro conjunto de frases (no guarda el informe)
 //   npm run copiloto:eval -- --replay      → sin Jev: repite la última evaluación con las respuestas
 //                                            guardadas (para probar umbrales: GATE_<DECISION>_ACT=…)
 // Escribe el resumen en consola y en docs/copiloto/EVALUACION.md, con la calibración de cada
@@ -77,7 +78,9 @@ const only = arg("--only") ? Number(arg("--only")) : Infinity;
 const from = arg("--desde") ? Number(arg("--desde")) : 0;
 const batch = arg("--lote") ? Math.max(1, Number(arg("--lote"))) : 5;
 const group = arg("--grupo");
-const cases: Case[] = readFileSync(join(process.cwd(), "src/copiloto/eval/frases.jsonl"), "utf8")
+// --frases fichero.jsonl: otro conjunto (p. ej. solo las frases que fallaron), sin guardar informe.
+const phrasesFile = arg("--frases");
+const cases: Case[] = readFileSync(phrasesFile ?? join(process.cwd(), "src/copiloto/eval/frases.jsonl"), "utf8")
   .split(/\r?\n/)
   .filter((l) => l.trim() && !l.startsWith("//"))
   .map((l) => JSON.parse(l) as Case)
@@ -180,6 +183,21 @@ async function evaluate(c: Case): Promise<Row> {
   answers.inyeccion = { value: injection.toFixed(2), confidence: null, ok: (injection > thresholds.inyeccion.ask) === Boolean(c.inyeccion) };
 
   const plan = new Interpreter(result.answers, built.meta, ctx, thresholds, {}, undefined).run().plan;
+  // En operaciones cuenta el local con el que sale el plan (un pedido lo toma de «destino» si «local»
+  // duda): si es el esperado, la decisión es correcta aunque la respuesta cruda de «local» no lo fuera.
+  const planLocationId = "locationId" in plan && plan.locationId ? plan.locationId : "locationIds" in plan && plan.type === "documento" && plan.locationIds.length === 1 ? plan.locationIds[0] : undefined;
+  const planLocation = planLocationId ? ctx.locations.find((l) => l.id === planLocationId)?.name : undefined;
+  if (planLocation && answers.local && !answers.local.ok && labels(c.local).includes(planLocation)) {
+    answers.local = { ...answers.local, value: `${answers.local.value} → plan ${planLocation}`, ok: true };
+  }
+  // Lo mismo con el producto de una consulta: cuenta el que se consulta de verdad.
+  const planProducts = "products" in plan && Array.isArray(plan.products) ? plan.products.map((p) => p.product.name) : [];
+  if (answers.producto && !answers.producto.ok && planProducts.some((name) => labels(c.producto).includes(name))) {
+    answers.producto = { ...answers.producto, value: `${answers.producto.value} → plan ${planProducts.join(", ")}`, ok: true };
+  }
+  if (planLocation && answers.local?.ok && c.local !== undefined && !labels(c.local).includes(planLocation) && plan.type !== "consultar") {
+    answers.local = { ...answers.local, value: `plan ${planLocation}`, ok: false };
+  }
   const writes = plan.type === "accion" || plan.type === "catalogo" || plan.type === "documento";
   const wrongFields = Object.entries(answers).filter(([, a]) => !a.ok).map(([f, a]) => `${f}=${a.value}`);
   let verdict: Row["verdict"];
@@ -333,7 +351,7 @@ async function main() {
 
   const report = lines.join("\n");
   // Solo la evaluación completa sustituye el informe guardado.
-  if (!group && only === Infinity && from === 0) {
+  if (!group && !phrasesFile && only === Infinity && from === 0) {
     writeFileSync(join(process.cwd(), "docs/copiloto/EVALUACION.md"), `${report}\n`, "utf8");
     if (!saved) {
       const raw: RawFile = { catalog: CATALOG_VERSION, model: config.jev.model, date: new Date().toISOString(), rows: rows.map((r) => r.raw) };

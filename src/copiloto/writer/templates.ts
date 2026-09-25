@@ -100,8 +100,10 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const low = result.totals.bajo_minimo !== "0" ? ` ${plural(result.totals.bajo_minimo ?? "0", "bajo mínimo", "bajo mínimo")}.` : "";
       if (result.totals.desglose === "local") {
         if (result.count === 1) {
+          // «en 2 locales» (los que lo tienen), no «en tus 4 locales»: el reparto va debajo.
           const r = result.rows[0]!;
-          return `Stock ${where}: ${r.cantidad}${money ? ` (${r.valor})` : ""}.\n${r.desglose}${r.bajo_minimo ? "\n⚠ Bajo mínimo en algún local." : ""}`;
+          const places = String(r.desglose ?? "").split(" · ").filter(Boolean).length;
+          return `Stock de ${r.producto}: ${r.cantidad}${money ? ` (${r.valor})` : ""} en ${plural(String(places), "local", "locales")}.\n${r.desglose}${r.bajo_minimo ? "\n⚠ Bajo mínimo en algún local." : ""}`;
         }
         return `Stock ${where}${money ? `: valor total ${result.totals.valor_total}` : ""}.${low}\n${list(result.rows, (r) => `${r.producto}: ${r.cantidad} — ${r.desglose}`, 8)}${more}`;
       }
@@ -124,7 +126,11 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
     case "query_prices": {
       // Precio de productos concretos («¿a cuánto nos sale el Beefeater?»): el último, línea a línea.
       if (scope.productos.length > 0 && (o.dato === "precio" || result.count <= 3)) {
-        return list(result.rows, (r) => `${r.producto} · ${r.formato}: ${r.precio_actual} (${r.proveedor}, ${r.fecha})${r.variacion ? `, antes ${r.precio_anterior}` : ""}`, 8).replace(/^• /, result.count === 1 ? "" : "• ");
+        // «Beefeater · Caja 6: 69,00 € (Makro, 12/09) — 11,50 € / Botella 70 cl»: el formato y la unidad.
+        const perUnit = (r: ToolRow) => (r.por_unidad && !String(r.por_unidad).startsWith(String(r.precio_actual)) ? ` — ${r.por_unidad}` : "");
+        // Con muchos precios van en la tabla: el texto es el titular.
+        if (result.count > 3) return `Precios de compra de ${scope.productos.join(", ")}: ${plural(String(result.count), "precio", "precios")} por formato y proveedor.\n${list(result.rows, (r) => `${r.producto} · ${r.formato}: ${r.precio_actual} (${r.proveedor})${perUnit(r)}`, 8)}`;
+        return list(result.rows, (r) => `${r.producto} · ${r.formato}: ${r.precio_actual} (${r.proveedor}, ${r.fecha})${perUnit(r)}${r.variacion ? `, antes ${r.precio_anterior}` : ""}`, 8).replace(/^• /, result.count === 1 ? "" : "• ");
       }
       const rises = urgent(evaluations);
       const head = `Precios desde el ${result.totals.desde}: ${result.totals.subidas} subidas.`;
@@ -153,11 +159,12 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const t = result.totals;
       if (o.dato === "proveedor") return `${t.producto}: se compra a ${t.proveedores}.`;
       if (o.dato === "formatos") return `${t.producto}: ${t.formatos}.`;
-      if (o.dato === "precio") return `${t.producto}: ${t.compra}.`;
+      if (o.dato === "precio") return `${t.producto}: ${t.precio_unidad}${t.compra !== "sin precio de proveedor" ? ` · ${t.compra}` : ""}.`;
       if (o.dato === "minimo") return `Mínimos de ${t.producto}:\n${list(result.rows, (r) => `${r.local}: ${r.minimo ?? "sin mínimo"} (hay ${r.cantidad})`, 8)}`;
-      const places = list(result.rows, (r) => `${r.local}: ${r.cantidad}${r.minimo ? ` (mínimo ${r.minimo})` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
-      // Ficha en líneas cortas: se lee de un vistazo.
-      return `${t.producto} · ${t.categoria}\nFormatos: ${t.formatos}\nCompra: ${t.compra}\nStock total: ${t.total}\n${places}`;
+      const places = list(result.rows, (r) => `${r.local}: ${r.cantidad} (${r.valor})${r.minimo ? `, mínimo ${r.minimo}` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
+      // Ficha en líneas cortas: precio, cantidad y consumo de un vistazo; el reparto por local, en la tabla.
+      const low = t.bajo_minimo && t.bajo_minimo !== "0" ? ` · ⚠ bajo mínimo en ${plural(t.bajo_minimo, "local", "locales")}` : "";
+      return `${t.producto} · ${t.categoria}\nPrecio: ${t.precio_unidad}${t.compra !== "sin precio de proveedor" ? ` · ${t.compra}` : ""}\nStock: ${t.total} (${t.valor_total})${low}\nConsumo 30 días: ${t.consumo_30}\n${places}`;
     }
     case "query_top_usage": {
       const top = result.rows[0]!;

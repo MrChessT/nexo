@@ -55,6 +55,8 @@ const PRODUCT_BREAKERS = new Set([
   "en", "a", "al", "para", "desde", "hacia", "por", "porque", "que", "y", "o", "con", "sin", "hoy", "ayer",
   "roto", "rota", "rotos", "rotas", "caducado", "caducada", "caducados", "caducadas", "derramado", "derramada",
   "derramados", "derramadas", "del", "de",
+  // La puntuación cierra el producto: «una coca, dala de baja» → «coca».
+  ",", ";", ":", "!", "?", "¿", "¡",
 ]);
 
 /** Sustantivos del dominio que siguen a "un/una" sin ser productos. */
@@ -62,6 +64,10 @@ const NON_PRODUCT_NOUNS = new Set([
   "traspaso", "merma", "inventario", "recepcion", "albaran", "pedido", "pregunta", "momento", "poco", "rato",
   "favor", "resumen", "informe", "vistazo", "lista", "listado", "cierre", "conteo", "movimiento", "ajuste", "vez",
   "semana", "mes", "dia", "hora", "par",
+  // Personas y sitios: «un cliente tiró una coca», «una mesa se ha llevado 3 cocas».
+  "cliente", "clienta", "clientes", "camarero", "camarera", "camareros", "cocinero", "cocinera", "mesa", "chico",
+  "chica", "companero", "companera", "jefe", "jefa", "encargado", "encargada", "repartidor", "repartidora",
+  "proveedor", "senor", "senora", "persona", "grupo", "amigo", "amiga", "nino", "nina", "trabajador", "trabajadora",
 ]);
 
 /** Estado de lo que se da de baja; puede ir entre la unidad y el producto. */
@@ -81,7 +87,7 @@ interface Token {
 
 function tokens(message: string): Token[] {
   // NFC + \p{M}: una tilde enviada como carácter combinado (o + ´) no parte la palabra.
-  const raw = message.normalize("NFC").match(/\d+(?:[.,/]\d+)?|[\p{L}\p{M}\p{N}]+|[€%]/gu) ?? [];
+  const raw = message.normalize("NFC").match(/\d+(?:[.,/]\d+)?|[\p{L}\p{M}\p{N}]+|[€%,;:!?¿¡]/gu) ?? [];
   return raw.map((r) => ({ raw: r, norm: normalize(r) }));
 }
 
@@ -167,6 +173,8 @@ export function parseQuantities(message: string, maxSegments = 5): Segment[] {
         continue;
       }
       if (parseNumber(t.raw) && (isDigitNumber(t) || nextUnit !== undefined)) break;
+      // «tiró una coca»: un «un/una» dentro del texto empieza otra cantidad.
+      if (productTokens.length > 0 && parseNumber(t.raw) && !isDigitNumber(t)) break;
       if (PRODUCT_BREAKERS.has(t.norm) && productTokens.length > 0) {
         // "de" dentro del nombre ("zumo de naranja") sí se mantiene.
         if (t.norm === "de" && toks[i + 1] && !PRODUCT_BREAKERS.has(toks[i + 1]!.norm)) {
@@ -193,6 +201,10 @@ export function parseQuantities(message: string, maxSegments = 5): Segment[] {
     }
 
     const productText = productTokens.map((t) => t.raw).join(" ");
+    // «6 cajas de coca y 2 de tónica»: «2 de» sin unidad justo después de otro fragmento con unidad
+    // es la misma unidad (2 cajas), como lo entendería cualquiera.
+    const previous = segments[segments.length - 1];
+    if (unit === null && previous?.unit && toks[start + 1]?.norm === "de" && toks[start - 1]?.norm === "y") unit = previous.unit;
     segments.push({
       text: toks.slice(start, end).map((t) => t.raw).join(" "),
       amount: amount.toString(),

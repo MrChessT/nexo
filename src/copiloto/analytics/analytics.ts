@@ -453,9 +453,16 @@ export class Analytics {
       case "query_spend":
         chart = await this.spendBySupplier(q);
         break;
+      case "query_product": {
+        // Ficha: cómo ha ido el precio; con un solo precio, el consumo diario; sin consumo, el stock por local.
+        const prices = await this.priceHistory(q);
+        const pricePoints = prices.series.reduce((n, s) => n + s.points.length, 0);
+        chart = !prices.empty && pricePoints >= 2 ? prices : await this.dailyUsage(q);
+        if (!chart || chart.empty || chart.series.every((s) => s.points.length < 2)) chart = q.locationIds.length > 1 ? await this.stockByLocation(q) : null;
+        break;
+      }
       case "query_pending_transfers":
       case "query_orders":
-      case "query_product":
         chart = null;
         break;
     }

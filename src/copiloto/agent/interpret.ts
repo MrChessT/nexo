@@ -22,7 +22,7 @@ import {
 } from "../jev/catalog";
 import type { JevAnswer } from "../jev/client";
 import type { ToolName } from "../tools/tools";
-import type { RoutingMeta } from "./routing";
+import { mentionsWaste, venueRoles, type RoutingMeta } from "./routing";
 import type { Focus } from "./session";
 import { preferredLocation, type Habits } from "./habits";
 import { VIEW_FOR_TOOL } from "../analytics/analytics";
@@ -146,7 +146,8 @@ const INTENT_ALT_EXPECTED: Record<Intent, string[]> = {
   navegar: ["leer", "ninguno", "cambiar"],
   pedir_sugerencias: ["leer"],
   proponer_accion: ["cambiar"],
-  conversar: ["ninguno", "leer"],
+  // Conversar tampoco escribe nada: «¿cómo hago un traspaso?» suena a «cambiar» (0,63) y es ayuda (1,00).
+  conversar: ["ninguno", "leer", "cambiar"],
   fuera_de_ambito: ["ninguno", "leer"],
 };
 
@@ -293,6 +294,11 @@ export class Interpreter {
     if (intentValue === "proponer_accion" && intentOutcome === "confirmar" && this.overrides.intent === undefined && this.actionCorroborates()) {
       intentOutcome = "actuar";
     }
+    // Lo mismo en una lectura: «ficha del Barceló» (consultar 0,59, navegar 0,40) con query_product 1,00
+    // y «leer» 1,00. Solo lectura: nada se escribe.
+    if (intentValue === "consultar" && intentOutcome !== "actuar" && this.overrides.intent === undefined && this.queryCorroborates()) {
+      intentOutcome = "actuar";
+    }
 
     if (intentValue === "fuera_de_ambito") {
       return this.done(intentValue, intentOutcome === "actuar" ? { type: "fuera_de_ambito" } : { type: "conversar" });
@@ -318,6 +324,46 @@ export class Interpreter {
   private readDato(): Dato {
     const g = this.gate("dato", "Dato", this.thresholds.dato);
     return g && g.outcome === "actuar" ? (g.choice as Dato) : "general";
+  }
+
+  /**
+   * Merma o traspaso («tírame 1 bolsa de hielo del parador»: merma 0,71, traspaso 0,29): un traspaso
+   * necesita un local de destino distinto del de origen. Si Jev está seguro de que no se nombra ninguno
+   * y ya se inclina por la merma, es merma; si nombra otro local y se inclina por el traspaso, traspaso.
+   * Si no, null (se pregunta como siempre).
+   */
+  private wasteOrTransfer(ranked: RankedOption[]): "merma" | "traspaso" | null {
+    const [first, second] = ranked;
+    if (!first || !second) return null;
+    const pair = new Set([first.option, second.option]);
+    if (!pair.has("merma") || !pair.has("traspaso") || first.probability + second.probability < 0.85) return null;
+    const dest = this.choice("local_destino");
+    if (!dest) return null;
+    const p = (dest.probabilities as Record<string, number>)[dest.choice] ?? 0;
+    const origin = this.choice("local")?.choice;
+    const sure = p >= this.thresholds.local_borrador.act;
+    // «caducaron 3 packs de agua en la oliva»: un «destino» igual al origen es que no hay destino.
+    const otherVenue = sure && this.meta.locationKeys.has(dest.choice) && dest.choice !== origin;
+    const noDestination = (sure && dest.choice === NO_APLICA) || dest.choice === origin;
+    const waste = !!this.meta.message && mentionsWaste(this.meta.message);
+    // Solo confirma hacia donde Jev ya se inclina: «quita 6 cocas del vivero» (merma 0,55, traspaso
+    // 0,40, sin palabras de merma) sigue siendo dudoso aunque no diga destino, y se pregunta.
+    if (first.option === "merma" && !otherVenue && (waste || (noDestination && first.probability >= 0.65))) return "merma";
+    return first.option === "traspaso" && otherVenue ? "traspaso" : null;
+  }
+
+  /** ¿Jev está seguro de una consulta concreta y de que se trata de leer? */
+  private queryCorroborates(): boolean {
+    const tool = this.choice("herramienta");
+    if (!tool || tool.choice === "ninguna" || gateChoice(tool, this.thresholds.herramienta).outcome !== "actuar") return false;
+    const alt = asChoice(this.answers.intent_alt);
+    return !alt || ((alt.probabilities as Record<string, number>).leer ?? 0) >= 0.5;
+  }
+
+  /** La decisión ya registrada pasa a «actuar» (lo que se enseña en «Entendido» es lo que se decidió). */
+  private markActed(id: string): void {
+    const decision = [...this.decisions].reverse().find((d) => d.id === id);
+    if (decision) decision.gate = "actuar";
   }
 
   /** ¿Jev está seguro de una operación concreta (no «ninguna»)? Nunca para cerrar inventario. */
@@ -418,6 +464,20 @@ export class Interpreter {
       const literal = !!chosen && namesProduct(rs.segment.productText || rs.segment.text, chosen);
       const g = this.gate(id, "Producto", slotSpec(this.thresholds, context, "producto", literal), (v) => (v === NINGUNO || v === VARIOS ? label(v) : v));
       if (!g) continue;
+      // Un solo candidato, el mensaje lo nombra tal cual y Jev lo pone primero («4 tónicas» con una sola
+      // tónica: 0,50 frente a «varios» 0,38): no hay otro producto al que pueda referirse.
+      if (g.outcome !== "actuar" && literal && rs.candidates.size === 1 && chosen && g.ranked[0]?.option === answer!.choice && g.probability >= 0.45) {
+        g.outcome = "actuar";
+        this.markActed(id);
+      }
+      // En una consulta (solo lectura) basta con que el mensaje nombre el único candidato y Jev le dé
+      // algo de peso: «¿cuál es el mínimo de tónica en pickels?» (ninguno 0,46, la tónica 0,43).
+      const [onlyKey, only] = rs.candidates.size === 1 ? [...rs.candidates.entries()][0]! : [undefined, undefined];
+      if (!forAction && only && onlyKey && g.outcome !== "actuar" && namesProduct(rs.segment.productText || rs.segment.text, only) && ((answer!.probabilities as Record<string, number>)[onlyKey] ?? 0) >= 0.3) {
+        this.markActed(id);
+        resolved.push({ product: only, segmentIndex: i, amount: null, unit: null, price: null, quantityOutcome: null, productOutcome: "actuar" });
+        continue;
+      }
       if (g.choice === NINGUNO && g.outcome === "actuar") continue;
       // "ron" con varios rones: en una consulta se incluyen todos; en una escritura se pregunta cuál.
       if (g.choice === VARIOS && g.outcome !== "preguntar") {
@@ -618,7 +678,13 @@ export class Interpreter {
     const context: ContextKey = `accion:${accion}`;
     const all = this.ctx.locations.map((l) => l.id);
     const g = this.gateSlot(context, "local", "local", "Local");
-    const id = g && g.outcome === "actuar" ? this.meta.locationKeys.get(g.choice) : undefined;
+    let id = g && g.outcome === "actuar" ? this.meta.locationKeys.get(g.choice) : undefined;
+    // «ya ha llegado lo que mandó el Vivero»: si Jev no lo recoge pero el mensaje nombra un solo local,
+    // ese local acota el documento (solo filtra cuál; el borrador se confirma igual).
+    if (!id && this.meta.message) {
+      const named = [...this.meta.locationKeys.entries()].filter(([name]) => namesAll(this.meta.message!, name));
+      if (named.length === 1) id = named[0]![1];
+    }
     return { type: "documento", accion, locationIds: id ? [id] : all };
   }
 
@@ -626,12 +692,19 @@ export class Interpreter {
     const accionAnswer = this.choice("tipo_accion");
     const spec = accionAnswer?.choice === "cierre_inventario" ? this.thresholds.cierre_inventario : this.thresholds.tipo_accion;
     const g = this.gate("tipo_accion", "Operación", spec);
-    if (!g || g.choice === "ninguna" || g.outcome !== "actuar") {
+    let chosen = g && g.outcome === "actuar" && g.choice !== "ninguna" ? g.choice : null;
+    if (g && !chosen) {
+      chosen = this.wasteOrTransfer(g.ranked);
+      // Lo que se enseña en «Entendido» debe ser lo que se decidió.
+      const decision = chosen ? this.decisions.find((d) => d.id === "tipo_accion") : undefined;
+      if (decision && chosen) Object.assign(decision, { value: chosen, valueLabel: label(chosen), gate: "actuar" });
+    }
+    if (!chosen) {
       return this.clarify("tipo_accion", "¿Qué operación quieres registrar?", g?.ranked ?? [], ["ninguna"]);
     }
-    if ((CATALOG_ACCIONES as readonly string[]).includes(g.choice)) return this.catalogAction(g.choice as CatalogAccion);
-    if ((DOCUMENT_ACCIONES as readonly string[]).includes(g.choice)) return this.documentAction(g.choice as DocumentAccion);
-    const accion = g.choice as Exclude<Accion, "ninguna" | CatalogAccion | DocumentAccion>;
+    if ((CATALOG_ACCIONES as readonly string[]).includes(chosen)) return this.catalogAction(chosen as CatalogAccion);
+    if ((DOCUMENT_ACCIONES as readonly string[]).includes(chosen)) return this.documentAction(chosen as DocumentAccion);
+    const accion = chosen as Exclude<Accion, "ninguna" | CatalogAccion | DocumentAccion>;
     const t = this.thresholds;
     const context: ContextKey = `accion:${accion}`;
 
@@ -644,6 +717,13 @@ export class Interpreter {
     const locGate = this.gateSlot(context, "local", "local", "Local");
     let resolvedLocation = locGate ? this.meta.locationKeys.get(locGate.choice) ?? null : null;
     let locationOutcome: GateOutcome = resolvedLocation ? locGate!.outcome : "preguntar";
+    // «pásame 4 tónicas del Pickels al Parador»: Jev duda entre los dos locales nombrados (0,65 / 0,35),
+    // pero la preposición dice cuál es el origen. Si Jev ya lo pone primero, se confirma.
+    const roles = accion === "traspaso" && this.meta.message ? venueRoles(this.meta.message, [...this.meta.locationKeys.keys()]) : null;
+    if (roles && locGate && resolvedLocation && locationOutcome !== "actuar" && roles.origin === locGate.choice) {
+      locationOutcome = "actuar";
+      this.markActed("local");
+    }
     if (!resolvedLocation && this.onlyLocation()) {
       resolvedLocation = this.onlyLocation();
       locationOutcome = "actuar";
@@ -666,6 +746,10 @@ export class Interpreter {
       const toGate = this.gateSlot(context, "local_destino", "local_destino", "Local destino");
       toLocationId = toGate && toGate.choice !== NO_APLICA ? this.meta.locationKeys.get(toGate.choice) ?? null : null;
       toLocationOutcome = toLocationId && toLocationId !== resolvedLocation ? toGate!.outcome : "preguntar";
+      if (roles && toGate && toLocationOutcome === "confirmar" && roles.destination === toGate.choice) {
+        toLocationOutcome = "actuar";
+        this.markActed("local_destino");
+      }
       if (toLocationOutcome === "preguntar") {
         const ranked = (toGate?.ranked ?? []).filter((r) => this.meta.locationKeys.get(r.option) !== resolvedLocation);
         return this.clarify("local_destino", "¿A qué local va la mercancía?", ranked, [NO_APLICA], locationName);

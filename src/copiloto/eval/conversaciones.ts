@@ -22,7 +22,7 @@ import type { ClarifyEvent, DecisionEvent, SseEvent, TableEvent } from "../contr
 import { FakeJev, type Script } from "../dev/fake-jev";
 import { FixtureDataSource, fixtureContext, ORG_ID } from "../dev/fixture";
 import { FixtureWriter } from "../dev/fixture-writer";
-import { viveroProducts } from "../dev/vivero-catalog";
+import { viveroProducts, viveroRows, type ViveroRow } from "../dev/vivero-catalog";
 import type { Product, SessionContext } from "../domain";
 import { DraftBuilder } from "../drafts/builder";
 import { ConfirmService } from "../drafts/confirm";
@@ -33,7 +33,7 @@ import { CATALOG_VERSION } from "../jev/catalog";
 import { JevClient, type JevPort, type JevResult } from "../jev/client";
 import { Metrics } from "../metrics/metrics";
 import { InventoryTools } from "../tools/tools";
-import type { BalanceRaw, DataFilter } from "../tools/types";
+import type { BalanceRaw, DataFilter, LocationProductRaw, PriceRaw, SupplierPriceRaw } from "../tools/types";
 import { Writer } from "../writer/writer";
 
 interface Expectation {
@@ -73,41 +73,98 @@ function loadConversations(): Conversation[] {
   return JSON.parse(readFileSync(join(process.cwd(), "src/copiloto/eval/conversaciones.json"), "utf8")) as Conversation[];
 }
 
-/** Datos del ejemplo más stock inventado (una caja) de cada producto del catálogo real en cada local. */
-class ViveroDataSource extends FixtureDataSource {
+/**
+ * Datos del ejemplo más el catálogo real de Vivero 55 con sus precios y proveedores de verdad. Como en
+ * el negocio real, cada local trabaja su surtido: el Vivero, todo; los demás, unos dos tercios, con
+ * cantidades distintas en cada uno (no «lo mismo en todas partes»).
+ */
+export class ViveroDataSource extends FixtureDataSource {
+  readonly #rows: ViveroRow[] = viveroRows();
+  /** Los ids del catálogo real coinciden con los del ejemplo: lo del ejemplo con esos ids no cuenta. */
+  readonly #productIds: Set<string>;
+  readonly #packIds: Set<string>;
+
   constructor(
     now: Date,
     private readonly products: Product[],
     private readonly locationIds: string[],
     private readonly areas: SessionContext["areas"],
+    private readonly viveroId: string,
   ) {
     super(now);
+    this.#productIds = new Set(products.map((p) => p.id));
+    this.#packIds = new Set(products.flatMap((p) => p.packs.map((k) => k.id)));
+  }
+
+  /** ¿El local trabaja el producto nº i? ¿Cuántas unidades (botellas, kg, ud) tiene? */
+  #stock(i: number, locationId: string): number {
+    const j = this.locationIds.indexOf(locationId);
+    if (locationId !== this.viveroId && (i + j) % 3 === 0) return 0;
+    return 2 + ((i * 7 + j * 3) % 11);
+  }
+
+  /** Unidad base por unidad de catálogo: ml de la botella, 1000 g del kg, 1 ud. */
+  #factor(p: Product): number {
+    return Number(p.packs.find((k) => k.isCountDefault)?.qtyBase ?? "1");
+  }
+
+  #catalog(filter: DataFilter): Array<{ p: Product; i: number; locationId: string; units: number }> {
+    return this.products.flatMap((p, i) =>
+      !filter.productIds || filter.productIds.includes(p.id)
+        ? this.locationIds.filter((l) => filter.locationIds.includes(l)).map((locationId) => ({ p, i, locationId, units: this.#stock(i, locationId) })).filter((x) => x.units > 0)
+        : [],
+    );
   }
 
   override async balances(filter: DataFilter): Promise<BalanceRaw[]> {
-    const own = await super.balances(filter);
-    const extra = this.products
-      .filter((p) => !filter.productIds || filter.productIds.includes(p.id))
-      .flatMap((p) => {
-        const pack = p.packs.find((k) => !k.isCountDefault) ?? p.packs[0];
-        const qty = String(Number(pack?.qtyBase ?? "1") * 2);
-        return this.locationIds.filter((l) => filter.locationIds.includes(l)).map((locationId) => ({ locationId, productId: p.id, qty, avgCost: "0.02" }));
-      });
-    return [...own, ...extra];
+    const extra = this.#catalog(filter).map(({ p, i, locationId, units }) => ({
+      locationId,
+      productId: p.id,
+      qty: String(units * this.#factor(p)),
+      avgCost: String(this.#rows[i]!.cost / this.#factor(p)),
+    }));
+    return [...(await super.balances(filter)).filter((b) => !this.#productIds.has(b.productId)), ...extra];
+  }
+
+  override async locationProducts(filter: DataFilter): Promise<LocationProductRaw[]> {
+    const extra = this.#catalog(filter).map(({ p, i, locationId }) => ({
+      locationId,
+      productId: p.id,
+      minQty: String(this.#rows[i]!.min * this.#factor(p)),
+      parQty: String(this.#rows[i]!.par * this.#factor(p)),
+    }));
+    return [...(await super.locationProducts(filter)).filter((l) => !this.#productIds.has(l.productId)), ...extra];
+  }
+
+  /** Último precio de compra del formato de compra, como lo carga el seed. */
+  override async supplierPrices(packIds: string[]): Promise<SupplierPriceRaw[]> {
+    const extra = this.products.flatMap((p, i) => {
+      const pack = p.packs.find((k) => k.isPurchaseDefault);
+      const row = this.#rows[i]!;
+      if (!pack || !packIds.includes(pack.id)) return [];
+      return [{ supplierId: `sup-${row.supplier}`, supplierName: row.supplier, packId: pack.id, lastPrice: (row.cost * row.pack).toFixed(4), lastPriceAt: new Date(this.now.getTime() - 20 * 86_400_000).toISOString() }];
+    });
+    return [...(await super.supplierPrices(packIds)).filter((p) => !this.#packIds.has(p.packId)), ...extra];
+  }
+
+  override async prices(packIds: string[] | null, since: string): Promise<PriceRaw[]> {
+    const current = await this.supplierPrices(packIds ?? this.products.flatMap((p) => p.packs.map((k) => k.id)));
+    const extra = current
+      .filter((c) => (c.lastPriceAt ?? "") >= since && c.supplierId.startsWith("sup-"))
+      .map((c) => ({ supplierId: c.supplierId, supplierName: c.supplierName, packId: c.packId, price: c.lastPrice, recordedAt: c.lastPriceAt! }));
+    return [...(await super.prices(packIds, since)).filter((p) => !this.#packIds.has(p.packId)), ...extra];
   }
 
   /** En cada local, los productos del catálogo real se reparten entre sus espacios. */
   override async areaBalances(areaId: string, productIds?: string[]) {
-    const own = await super.areaBalances(areaId, productIds);
+    const own = (await super.areaBalances(areaId, productIds)).filter((b) => !this.#productIds.has(b.productId));
     const area = this.areas.find((a) => a.id === areaId);
     if (!area) return own;
     const siblings = this.areas.filter((a) => a.locationId === area.locationId);
     const extra = this.products
-      .filter((p, i) => (!productIds || productIds.includes(p.id)) && siblings[i % siblings.length]?.id === areaId)
-      .map((p) => {
-        const pack = p.packs.find((k) => !k.isCountDefault) ?? p.packs[0];
-        return { areaId, productId: p.id, qty: String(Number(pack?.qtyBase ?? "1") * 2), avgCost: "0.02" };
-      });
+      .map((p, i) => ({ p, i, units: this.#stock(i, area.locationId) }))
+      .filter(({ p, i, units }) => units > 0 && (!productIds || productIds.includes(p.id)) && siblings[i % siblings.length]?.id === areaId)
+      .map(({ p, i, units }) => ({ areaId, productId: p.id, qty: String(units * this.#factor(p)), avgCost: String(this.#rows[i]!.cost / this.#factor(p)) }));
     return [...own, ...extra];
   }
 }
@@ -184,7 +241,7 @@ export async function runConversations(real = false): Promise<{ report: string; 
     const confirmService = new ConfirmService(drafts, audit, () => NOW);
     const agent = new Agent({
       jev,
-      tools: new InventoryTools(new ViveroDataSource(NOW, products, ctx.locations.map((l) => l.id), ctx.areas)),
+      tools: new InventoryTools(new ViveroDataSource(NOW, products, ctx.locations.map((l) => l.id), ctx.areas, ctx.locations.find((l) => l.name === "Vivero")!.id)),
       retriever: new LexicalRetriever(),
       writer: new Writer(null, metrics, { timeoutMs: 2000, attempts: 1 }),
       metrics,

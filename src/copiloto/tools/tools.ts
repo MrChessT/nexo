@@ -54,6 +54,19 @@ function finish(tool: ToolName, rows: ToolRow[], totals: Record<string, string>,
   return { tool, rows: rows.slice(0, max), totals, count: rows.length, truncated: rows.length > max, evalItems };
 }
 
+/** Unidad con la que se cuenta el producto («Botella 70 cl», «Kg») y su cantidad en unidad base. */
+function countUnit(product: Product): { label: string; qtyBase: Decimal } {
+  const count = product.packs.find((k) => k.isCountDefault);
+  return count ? { label: count.name, qtyBase: new Decimal(count.qtyBase) } : { label: product.baseUnit, qtyBase: new Decimal(1) };
+}
+
+/** «11,50 € / Botella 70 cl»: el precio de un formato llevado a la unidad con la que se cuenta. */
+export function unitPriceText(product: Product, packQtyBase: Decimal.Value, packPrice: Decimal.Value): string {
+  const unit = countUnit(product);
+  const qty = new Decimal(packQtyBase);
+  return qty.isZero() ? formatMoney(packPrice) : `${formatMoney(new Decimal(packPrice).mul(unit.qtyBase).div(qty))} / ${unit.label}`;
+}
+
 /** Filas del desglose por espacio: caben más (varias secciones con pocos productos cada una). */
 const MAX_AREA_ROWS = 60;
 const PER_AREA = 6;
@@ -147,19 +160,25 @@ export class InventoryTools implements Tools {
   }
 
   /**
-   * Ficha de producto: categoría, formatos, proveedor y último precio de compra, y stock y mínimo en
-   * cada local. Una fila por local; la ficha va en los totales (texto ya formateado).
+   * Ficha de producto: precio (por formato y por unidad; sin precio de proveedor, el coste medio del
+   * stock), stock y valor en cada local, mínimos y consumo de los últimos 30 días. Una fila por local; la
+   * ficha va en los totales (texto ya formateado).
    */
   private async product(params: ToolParams, ctx: SessionContext): Promise<ToolResult> {
     const product = ctx.products.find((p) => p.id === params.productIds[0]);
     if (!product) return finish("query_product", [], {});
-    const [balances, levels, prices] = await Promise.all([
+    const today = dayOf(params.now);
+    const from = addDays(today, -29);
+    const [balances, levels, prices, movements] = await Promise.all([
       this.source.balances({ locationIds: params.locationIds, productIds: [product.id] }),
       this.source.locationProducts({ locationIds: params.locationIds, productIds: [product.id] }),
       this.source.supplierPrices(product.packs.map((k) => k.id)),
+      this.source.movements({ locationIds: params.locationIds, productIds: [product.id], since: sinceIso(from) }),
     ]);
     const qty = new Map(balances.map((b) => [b.locationId, new Decimal(b.qty)]));
+    const cost = new Map(balances.map((b) => [b.locationId, new Decimal(b.avgCost)]));
     const min = new Map(levels.map((l) => [l.locationId, new Decimal(l.minQty)]));
+    // Los locales que trabajan el producto: los de su surtido y los que tienen stock.
     const locations = params.locationIds.filter((id) => qty.has(id) || min.has(id));
     const rows: ToolRow[] = locations.map((id) => {
       const q = qty.get(id) ?? new Decimal(0);
@@ -167,23 +186,48 @@ export class InventoryTools implements Tools {
       return {
         local: locationName(ctx, id),
         cantidad: formatStock(q, product),
+        valor: formatMoney(q.mul(cost.get(id) ?? 0)),
         minimo: m && m.gt(0) ? formatStock(m, product) : null,
         bajo_minimo: !!m && m.gt(0) && q.lt(m),
       };
     });
     const total = [...qty.values()].reduce((a, b) => a.plus(b), new Decimal(0));
-    const packNames = new Map(product.packs.map((k) => [k.id, k.name]));
-    const buy = prices
-      .map((p) => `${packNames.get(p.packId) ?? "formato"} a ${formatMoney(p.lastPrice)} (${p.supplierName})`)
-      .join(" · ");
+    const value = [...qty.entries()].reduce((acc, [id, q]) => acc.plus(q.mul(cost.get(id) ?? 0)), new Decimal(0));
+
+    // Precio: el último de cada formato y proveedor (supplierPrices viene del más reciente al más antiguo).
+    const packs = new Map(product.packs.map((k) => [k.id, k]));
+    const seen = new Set<string>();
+    const buy: string[] = [];
+    let unitPrice: string | null = null;
+    for (const p of prices) {
+      const pack = packs.get(p.packId);
+      const key = `${p.supplierId}:${p.packId}`;
+      if (!pack || seen.has(key)) continue;
+      seen.add(key);
+      buy.push(`${pack.name} a ${formatMoney(p.lastPrice)} (${p.supplierName})`);
+      unitPrice ??= unitPriceText(product, pack.qtyBase, p.lastPrice);
+    }
+    // Sin precio de proveedor: el coste medio con el que está valorado el stock.
+    if (!unitPrice && total.gt(0) && value.gt(0)) {
+      const unit = countUnit(product);
+      unitPrice = `${formatMoney(value.div(total).mul(unit.qtyBase))} / ${unit.label} (coste medio del stock)`;
+    }
+
+    const used = movements.filter((m) => m.type === "consumption");
+    const usedQty = used.reduce((acc, m) => acc.plus(new Decimal(m.qty).abs()), new Decimal(0));
+    const usedValue = used.reduce((acc, m) => acc.plus(new Decimal(m.qty).abs().mul(m.unitCost ?? 0)), new Decimal(0));
     return finish("query_product", rows, {
       producto: product.name,
       categoria: product.category ?? "sin categoría",
       formatos: product.packs.map((k) => k.name).join(" · ") || "sin formatos",
-      compra: buy || "sin precio de compra",
+      compra: buy.join(" · ") || "sin precio de proveedor",
+      precio_unidad: unitPrice ?? "sin precio",
       proveedores: [...new Set(prices.map((p) => p.supplierName))].join(", ") || "sin proveedor",
       total: formatStock(total, product),
+      valor_total: formatMoney(value),
       locales: String(locations.length),
+      bajo_minimo: String(rows.filter((r) => r.bajo_minimo === true).length),
+      consumo_30: usedQty.gt(0) ? `${formatStock(usedQty, product)} (${formatMoney(usedValue)}), ${formatStock(usedQty.div(30), product)} al día` : "sin consumo registrado",
     });
   }
 
@@ -507,6 +551,17 @@ export class InventoryTools implements Tools {
         date: latest.recordedAt.slice(0, 10),
       });
     }
+    // Productos concretos sin historial (precios puestos a mano o importados antes de la migración 0017):
+    // el último precio conocido de cada proveedor y formato.
+    if (specific) {
+      const known = new Set(lines.map((l) => `${l.supplier}:${l.product.id}:${l.packName}`));
+      for (const p of await this.source.supplierPrices([...packs.keys()])) {
+        const pack = packs.get(p.packId);
+        if (!pack || known.has(`${p.supplierName}:${pack.product.id}:${pack.packName}`)) continue;
+        known.add(`${p.supplierName}:${pack.product.id}:${pack.packName}`);
+        lines.push({ product: pack.product, packName: pack.packName, supplier: p.supplierName, old: null, latest: new Decimal(p.lastPrice), change: null, date: (p.lastPriceAt ?? "").slice(0, 10) || dayOf(params.now) });
+      }
+    }
     lines.sort((a, b) => (b.change ?? new Decimal(-1e9)).cmp(a.change ?? new Decimal(-1e9)));
     // Solo cuentan (y se valoran) las subidas dentro del periodo, no el último precio de hace meses.
     const rises = lines.filter((l) => l.change !== null && l.change.gt(0) && l.date >= from);
@@ -522,9 +577,11 @@ export class InventoryTools implements Tools {
         change_pct: `${formatDecimal(l.change!, 1)} %`,
       },
     }));
+    const qtyOf = new Map([...packs.entries()].map(([id, v]) => [`${v.product.id}:${v.packName}`, v.product.packs.find((k) => k.id === id)?.qtyBase ?? "1"]));
     const rows: ToolRow[] = lines.map((l) => ({
       producto: l.product.name,
       formato: l.packName,
+      por_unidad: unitPriceText(l.product, qtyOf.get(`${l.product.id}:${l.packName}`) ?? "1", l.latest),
       proveedor: l.supplier,
       precio_anterior: l.old ? formatMoney(l.old) : null,
       precio_actual: formatMoney(l.latest),

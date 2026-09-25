@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LOCATIONS } from "../dev/fixture";
 import { JevError } from "../jev/client";
+import { mentionsWaste, venueRoles } from "../agent/routing";
 import { chat, FakeJev, FakeProvider, find, makeAgent, run } from "./helpers";
 
 const BARCELO = "Ron Barceló Añejo 70 cl";
@@ -51,7 +52,8 @@ describe("enrutado del agente", () => {
   });
 
   it("confianza baja en la intención → aclaración con las opciones más probables; la respuesta reutiliza la llamada nº 1", async () => {
-    const jev = new FakeJev([{ intent: { dist: { consultar: 0.5, navegar: 0.4 } }, intent_alt: "leer", herramienta: "query_pending_transfers" }]);
+    // La segunda formulación no confirma que sea una lectura: no hay corroboración y se pregunta.
+    const jev = new FakeJev([{ intent: { dist: { consultar: 0.5, navegar: 0.4 } }, intent_alt: { dist: { ninguno: 0.6, leer: 0.4 } }, herramienta: "query_pending_transfers" }]);
     const { agent } = makeAgent(jev);
     const first = await run(agent, chat("los traspasos"));
     const clarify = find(first, "clarify")!;
@@ -160,6 +162,75 @@ describe("enrutado del agente", () => {
     expect(routed[1]!.state).not.toHaveProperty("named_suppliers");
   });
 
+  it("merma o traspaso: sin destino y con Jev inclinado a merma → merma; nombrando otro local → traspaso", async () => {
+    const waste = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { dist: { merma: 0.71, traspaso: 0.29 } }, local: "Parador", local_destino: "no_aplica" }]);
+    const first = await run(makeAgent(waste).agent, chat("tírame 1 bolsa de hielo del parador"));
+    expect(find(first, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "tipo_accion", value: "merma", gate: "actuar" })]));
+    expect(find(first, "clarify")?.field).not.toBe("tipo_accion");
+
+    const transfer = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { dist: { traspaso: 0.7, merma: 0.3 } }, local: "Parador", local_destino: "Vivero" }]);
+    const second = await run(makeAgent(transfer).agent, chat("saca 2 cocas del parador al vivero"));
+    expect(find(second, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "tipo_accion", value: "traspaso" })]));
+  });
+
+  it("palabras de merma y papel de cada local según la preposición", () => {
+    expect(["tírame 1 bolsa de hielo", "caducaron 3 packs", "baja 2 limones pochos", "dala de baja", "se ha roto una"].every(mentionsWaste)).toBe(true);
+    expect(["quita 6 cocas del vivero", "saca 2 cajas", "pasa 3 cocas al vivero"].some(mentionsWaste)).toBe(false);
+    const venues = ["Parador", "Pickels", "Vivero", "La Oliva"];
+    expect(venueRoles("pásame 4 tónicas del pickels al parador", venues)).toEqual({ origin: "Pickels", destination: "Parador" });
+    expect(venueRoles("lleva a la oliva 1 saco de limones del parador", venues)).toEqual({ origin: "Parador", destination: "La Oliva" });
+    expect(venueRoles("mándale al vivero 2 cajas desde el parador", venues)).toEqual({ origin: "Parador", destination: "Vivero" });
+  });
+
+  it("merma con palabras de merma aunque Jev dude y el «destino» sea el mismo local; sin ellas, se pregunta", async () => {
+    const expired = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { dist: { merma: 0.76, traspaso: 0.19 } }, local: "Vivero", local_destino: "Vivero" }]);
+    const first = await run(makeAgent(expired).agent, chat("caducaron 3 botellas de barceló en el vivero"));
+    expect(find(first, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "tipo_accion", value: "merma", gate: "actuar" })]));
+
+    const vague = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: { dist: { merma: 0.55, traspaso: 0.4 } }, local: "Vivero" }]);
+    expect(find(await run(makeAgent(vague).agent, chat("quita 6 cocas del vivero")), "clarify")?.field).toBe("tipo_accion");
+  });
+
+  it("traspaso «del X al Y»: la preposición confirma el origen que Jev ya pone primero", async () => {
+    const jev = new FakeJev([
+      { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: { dist: { Pickels: 0.65, Parador: 0.35 } }, local_destino: "Parador", producto_0: "Tónica Schweppes 20 cl", cantidad_ok_0: 0.97 },
+      { coherencia: 0.95 },
+    ]);
+    const events = await run(makeAgent(jev).agent, chat("pásame 4 tónicas del pickels al parador"));
+    expect(find(events, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "local", value: "Pickels", gate: "actuar" })]));
+    expect(find(events, "clarify")?.field).not.toBe("local");
+  });
+
+  it("un solo candidato nombrado tal cual: se acepta aunque Jev dude con «varios»", async () => {
+    const jev = new FakeJev([
+      { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "merma", local: "Parador", producto_0: { dist: { "Tónica Schweppes 20 cl": 0.5, varios: 0.38 } }, cantidad_ok_0: 0.97 },
+      { coherencia: 0.95 },
+    ]);
+    const events = await run(makeAgent(jev).agent, chat("invita la casa a 2 tónicas en el parador"));
+    expect(find(events, "clarify")?.field).not.toBe("producto");
+    expect(find(events, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "producto_0", gate: "actuar" })]));
+  });
+
+  it("lectura dudosa pero consulta clarísima («ficha del Barceló») → se responde sin preguntar", async () => {
+    const jev = new FakeJev([{ intent: { dist: { consultar: 0.59, navegar: 0.4 } }, intent_alt: "leer", herramienta: "query_product", producto_0: "Ron Barceló Añejo 70 cl" }]);
+    const events = await run(makeAgent(jev).agent, chat("ficha del Barceló"));
+    expect(find(events, "clarify")).toBeUndefined();
+    expect(find(events, "done")!.text).toContain("Ron Barceló Añejo 70 cl · Destilados");
+  });
+
+  it("una pregunta de ayuda que suena a «cambiar» sigue siendo charla", async () => {
+    const jev = new FakeJev([{ intent: "conversar", intent_alt: { dist: { cambiar: 0.63, leer: 0.36 } } }]);
+    const events = await run(makeAgent(jev).agent, chat("¿cómo hago un traspaso?"));
+    expect(find(events, "clarify")).toBeUndefined();
+  });
+
+  it("consulta con un único candidato nombrado: se consulta ese producto aunque Jev dude con «ninguno»", async () => {
+    const jev = new FakeJev([{ intent: "consultar", intent_alt: "leer", herramienta: "query_stock", local: "Pickels", producto_0: { dist: { ninguno: 0.46, "Tónica Schweppes 20 cl": 0.43 } } }]);
+    const events = await run(makeAgent(jev).agent, chat("¿cuánta tónica queda en pickels?"));
+    expect(find(events, "clarify")).toBeUndefined();
+    expect(find(events, "navigate")).toMatchObject({ filters: { productId: expect.any(String) } });
+  });
+
   it("Jev caído → error recuperable; los atajos siguen funcionando", async () => {
     const jev = new FakeJev();
     jev.fail = new JevError("unavailable", "caído");
@@ -196,7 +267,7 @@ describe("atajos deterministas", () => {
     expect(clarify.options.map((o) => o.id).slice(0, 2).sort()).toEqual([BARCELO, BRUGAL]);
     const events = await run(agent, chat("", { message: BARCELO, clarification: { clarifyId: clarify.clarifyId, optionId: BARCELO } }));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas.");
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl: 4 botellas en 2 locales.");
     expect(text).toContain("Parador 3 botellas ⚠ · Pickels 1 botella");
     expect(jev.calls).toHaveLength(0);
   });
