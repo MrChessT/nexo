@@ -21,12 +21,18 @@ const ROUTES: Record<string, AppRoute> = {
 
 const TOOLS: Record<string, ToolName> = {
   stock: "query_stock",
+  // Como /stock, pero sin texto consulta en vez de navegar (lo usa el menú de funciones del panel).
+  existencias: "query_stock",
   movimientos: "query_movements",
   precios: "query_prices",
   pendientes: "query_pending_transfers",
   desvios: "query_count_variance",
   reponer: "query_reorder",
   falta: "query_reorder",
+  pedidos: "query_orders",
+  gasto: "query_spend",
+  ficha: "query_product",
+  consumo: "query_top_usage",
 };
 
 export const SHORTCUT_HELP = Object.keys(TOOLS).map((k) => `/${k}`).concat(Object.keys(ROUTES).map((k) => `/${k}`));
