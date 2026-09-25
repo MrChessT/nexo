@@ -92,6 +92,41 @@ export function mentionsReason(message: string): boolean {
   return /romp|\brot[oa]s?\b|caduc|derram|invit|error|equivoc|estrope|podri|venci|mal servid|se (?:ha|han) caido|cayo|tirad/.test(tokenize(message).join(" "));
 }
 
+/**
+ * Palabras que solo se usan para dar algo de baja: el motivo («roto», «caducado», «invitación») o el
+ * acto («tira», «tírame», «dala de baja», «pochos»). Sirven para confirmar una merma que Jev ya pone
+ * primera; «quita» o «saca» no cuentan (también se dicen de un traspaso).
+ */
+export function mentionsWaste(message: string): boolean {
+  const text = tokenize(message).join(" ");
+  return mentionsReason(message) || /\btir(a|as|ame|ala|alo|alas|alos|ar|o|aron|amos)\b|\bde baja\b|\bpoch[oa]s?\b|\bmal(o|a|os|as)\b|\ba la basura\b/.test(text);
+}
+
+/**
+ * Papel de cada local nombrado según la preposición que lo precede: «del Parador», «desde Pickels» →
+ * origen; «al Vivero», «a La Oliva», «hacia…», «para…» → destino. Solo corrobora lo que Jev elige.
+ */
+export function venueRoles(message: string, locations: string[]): { origin: string | null; destination: string | null } {
+  const words = tokenize(message);
+  const ORIGIN = new Set(["del", "desde", "de"]);
+  const DESTINATION = new Set(["al", "a", "hacia", "para"]);
+  const ARTICLES = new Set(["el", "la", "los", "las"]);
+  let origin: string | null = null;
+  let destination: string | null = null;
+  for (const name of locations) {
+    const first = tokenize(name).filter((t) => !ARTICLES.has(t))[0];
+    if (!first) continue;
+    const at = words.findIndex((w) => w === first || (w.length >= 4 && tokenSimilarity(w, first) >= 0.85));
+    if (at < 0) continue;
+    let k = at - 1;
+    while (k >= 0 && ARTICLES.has(words[k]!)) k -= 1;
+    const prev = words[k] ?? "";
+    if (ORIGIN.has(prev) && origin === null) origin = name;
+    else if (DESTINATION.has(prev) && destination === null) destination = name;
+  }
+  return { origin, destination };
+}
+
 /** Palabras genéricas de espacio: «¿qué hay en cada sección?» también pide ver los espacios. */
 const AREA_WORDS = ["seccion", "secciones", "espacio", "espacios", "zona", "zonas"];
 
@@ -170,6 +205,8 @@ export async function buildRouting(
   // Solo si el mensaje nombra alguno: Jev no puede saber que «Distribuciones Canarias» es un proveedor.
   const suppliers = ctx.suppliers.filter((s) => namesAll(message, s.name)).map((s) => s.name);
   if (suppliers.length > 0) state.named_suppliers = suppliers;
+  const venues = ctx.locations.filter((l) => namesAll(message, l.name)).map((l) => l.name);
+  if (venues.length > 0) state.named_venues = venues;
 
   const questions = routingQuestions({
     pendingDraft: !!pendingDraft,

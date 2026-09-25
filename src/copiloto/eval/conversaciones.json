@@ -353,7 +353,7 @@
         },
         "espera": {
           "consulta": true,
-          "texto": "en tus 4 locales"
+          "texto": "Stock de Beefeater:"
         }
       },
       {
@@ -561,6 +561,128 @@
         },
         "espera": {
           "texto": "Consulto stock"
+        }
+      }
+    ]
+  },
+  {
+    "nombre": "Llega el camión con varios productos",
+    "turnos": [
+      {
+        "usuario": "el de makro ha traído 6 cajas de coca y 2 de tónica al parador",
+        "jev": {
+          "intent": "proponer_accion",
+          "intent_alt": "cambiar",
+          "tipo_accion": "recepcion",
+          "local": "Parador",
+          "producto_0": "Coca-Cola",
+          "producto_1": "Schweppes Tónica",
+          "cantidad_ok_0": 0.97,
+          "cantidad_ok_1": 0.97
+        },
+        "espera": {
+          "borrador": "recepcion",
+          "titulo": "Coca-Cola"
+        }
+      }
+    ]
+  },
+  {
+    "nombre": "Cierre de noche: roturas y lo que se tira",
+    "turnos": [
+      {
+        "usuario": "anoche se rompieron 2 botellas de beefeater en el vivero",
+        "jev": {
+          "intent": "proponer_accion",
+          "intent_alt": "cambiar",
+          "tipo_accion": "merma",
+          "local": "Vivero",
+          "producto_0": "Beefeater",
+          "cantidad_ok_0": 0.97,
+          "motivo_merma": "rotura"
+        },
+        "espera": {
+          "borrador": "merma",
+          "titulo": "Beefeater"
+        }
+      },
+      {
+        "usuario": "sí, adelante",
+        "jev": {
+          "borrador": "confirmar"
+        },
+        "espera": {
+          "resuelto": "confirmado"
+        }
+      },
+      {
+        "usuario": "y tira 3 bolsas de hielo picado del vivero",
+        "jev": {
+          "intent": "proponer_accion",
+          "intent_alt": "cambiar",
+          "tipo_accion": "merma",
+          "local": "Vivero",
+          "producto_0": "Hielo picado 2 kg",
+          "cantidad_ok_0": 0.97
+        },
+        "espera": {
+          "borrador": "merma",
+          "titulo": "Hielo picado"
+        }
+      }
+    ]
+  },
+  {
+    "nombre": "Estadísticas de un producto: precio, cantidad y consumo",
+    "turnos": [
+      {
+        "usuario": "dame las stats del larios",
+        "jev": {
+          "intent": "consultar",
+          "intent_alt": "leer",
+          "herramienta": "query_product",
+          "producto_0": "Larios 12"
+        },
+        "espera": {
+          "consulta": true,
+          "texto": "Precio:"
+        }
+      },
+      {
+        "usuario": "¿y en el parador cuánto hay?",
+        "jev": {
+          "intent": "consultar",
+          "intent_alt": "leer",
+          "herramienta": "query_stock",
+          "local": "Parador",
+          "dato": "cantidad",
+          "seguimiento": 0.9
+        },
+        "espera": {
+          "consulta": true,
+          "texto": "Larios 12",
+          "sin": [
+            "€"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "nombre": "Pregunta de gestión antes del fin de semana",
+    "turnos": [
+      {
+        "usuario": "¿tengo suficiente coca para el finde en el vivero?",
+        "jev": {
+          "intent": "pedir_sugerencias",
+          "intent_alt": "leer",
+          "herramienta": "query_reorder",
+          "local": "Vivero",
+          "producto_0": "Coca-Cola",
+          "periodo": "fin_de_semana"
+        },
+        "espera": {
+          "consulta": true
         }
       }
     ]

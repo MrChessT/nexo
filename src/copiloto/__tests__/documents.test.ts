@@ -62,12 +62,17 @@ describe("traspasos y pedidos desde el chat", () => {
 describe("ficha de producto", () => {
   const sheet = (extra: Script = {}): Script => ({ intent: "consultar", intent_alt: "leer", herramienta: "query_product", ...extra });
 
-  it("«¿a cuánto compramos el Barceló?»: formatos, compra y stock por local", async () => {
+  it("ficha: precio por unidad y por formato, stock con su valor, consumo del mes y reparto por local", async () => {
     const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl" })]));
     const events = await run(agent, chat("¿a cuánto compramos el Barceló?"));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Ron Barceló Añejo 70 cl · Destilados\nFormatos: Botella 70 cl · Caja 6 botellas\nCompra: Caja 6 botellas a 92,40 € (Distribuciones Canarias)");
-    expect(find(events, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ local: "Parador", cantidad: "3 botellas", minimo: "4 botellas" })]));
+    expect(text).toBe(
+      "Ron Barceló Añejo 70 cl · Destilados\n" +
+        "Precio: 15,40 € / Botella 70 cl · Caja 6 botellas a 92,40 € (Distribuciones Canarias)\n" +
+        "Stock: 4 botellas (60,00 €) · ⚠ bajo mínimo en 1 local\n" +
+        "Consumo 30 días: 14 botellas (210,00 €), 0,47 botellas al día",
+    );
+    expect(find(events, "table")!.rows).toEqual(expect.arrayContaining([expect.objectContaining({ local: "Parador", cantidad: "3 botellas", valor: "45,00 €", minimo: "4 botellas" })]));
     expect(find(events, "navigate")).toMatchObject({ route: "/productos" });
   });
 
@@ -89,7 +94,7 @@ describe("ficha de producto", () => {
   it("dato=cantidad en una ficha → el stock, sin precios", async () => {
     const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl", dato: "cantidad" })]));
     const text = find(await run(agent, chat("¿cuántas botellas de Barceló tenemos?")), "done")!.text;
-    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas.");
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl: 4 botellas en 2 locales.");
     expect(text).not.toContain("€");
   });
 

@@ -54,7 +54,7 @@
 {"kind":"cantidad","message":"pasa 2 cajas y media de coca al vivero","expect":[{"amount":"2.5","unit":"caja","product":"coca"}]}
 {"kind":"cantidad","message":"se han roto 3 larios","expect":[{"amount":"3","unit":null,"product":"larios"}]}
 {"kind":"cantidad","message":"baja una botella de beefeater","expect":[{"amount":"1","unit":"botella","product":"beefeater"}]}
-{"kind":"cantidad","message":"han llegado 12 cajas de coca y 6 de fanta naranja","expect":[{"amount":"12","unit":"caja","product":"coca"},{"amount":"6","unit":null,"product":"fanta naranja"}]}
+{"kind":"cantidad","message":"han llegado 12 cajas de coca y 6 de fanta naranja","expect":[{"amount":"12","unit":"caja","product":"coca"},{"amount":"6","unit":"caja","product":"fanta naranja"}]}
 {"kind":"cantidad","message":"pasa 1,5 kg de limas al parador","expect":[{"amount":"1.5","unit":"kg","product":"limas"}]}
 {"kind":"cantidad","message":"dos botellas de moet rotas","expect":[{"amount":"2","unit":"botella","product":"moet"}]}
 {"kind":"cantidad","message":"pasa monkey 47 al vivero","expect":[]}
@@ -90,3 +90,9 @@
 {"kind":"respuesta","field":"local","options":[["Parador","Parador"],["Vivero","Vivero"]],"text":"perdona, digo en el vivero","expect":"opcion:Vivero"}
 {"kind":"respuesta","field":"producto","options":[["Larios 12","Larios 12"],["Beefeater","Beefeater"]],"text":"espera, el beefeater","expect":"opcion:Beefeater"}
 {"kind":"respuesta","field":"local","options":[["Parador","Parador"],["Vivero","Vivero"]],"text":"no, pásalo mejor a pickels","expect":"nuevo"}
+{"kind":"cantidad","message":"un cliente tiró una coca, dala de baja en el vivero","expect":[{"amount":"1","unit":null,"product":"coca"}]}
+{"kind":"cantidad","message":"un camarero ha roto 2 botellas de ron","expect":[{"amount":"2","unit":"botella","product":"ron"}]}
+{"kind":"cantidad","message":"una mesa se ha llevado 3 cocas","expect":[{"amount":"3","unit":null,"product":"cocas"}]}
+{"kind":"cantidad","message":"entra mercancía: 4 cajas de tónica en el vivero","expect":[{"amount":"4","unit":"caja","product":"tónica"}]}
+{"kind":"cantidad","message":"el de makro ha traído 6 cajas de coca y 2 de tónica al parador","expect":[{"amount":"6","unit":"caja","product":"coca"},{"amount":"2","unit":"caja","product":"tónica"}]}
+{"kind":"cantidad","message":"pasa 3 botellas de ron y 2 de ginebra","expect":[{"amount":"3","unit":"botella","product":"ron"},{"amount":"2","unit":"botella","product":"ginebra"}]}

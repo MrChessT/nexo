@@ -47,7 +47,7 @@ function columnsFor(result: ToolResult, dato?: Dato): { columns: Column[]; flag?
       };
     case "query_product":
       return {
-        columns: [{ key: "local", label: "Local" }, { key: "cantidad", label: "Stock", align: "right" }, { key: "minimo", label: "Mínimo", align: "right" }],
+        columns: [{ key: "local", label: "Local" }, { key: "cantidad", label: "Stock", align: "right" }, { key: "valor", label: "Valor", align: "right" }, { key: "minimo", label: "Mínimo", align: "right" }],
         flag: (r) => r.bajo_minimo === true,
       };
     case "query_spend":

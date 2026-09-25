@@ -16,6 +16,13 @@ export interface ViveroRow {
   unit: string;
   packLabel: string;
   pack: number;
+  /** Precio de compra por unidad de catálogo (botella, kg, ud), sin IVA. */
+  cost: number;
+  /** Nombre del proveedor. */
+  supplier: string;
+  /** Mínimo y objetivo en unidades de catálogo. */
+  min: number;
+  par: number;
   menu: string | null;
 }
 
@@ -32,6 +39,12 @@ export function viveroRows(root = process.cwd()): ViveroRow[] {
   const categories = new Map<string, string>();
   const catBlock = /insert into tmp_cat values([\s\S]*?);/.exec(sql)?.[1] ?? "";
   for (const m of catBlock.matchAll(/\('([^']*)','((?:[^']|'')*)',\d+\)/g)) categories.set(m[1]!, m[2]!.replace(/''/g, "'"));
+  const suppliers = new Map<string, string>();
+  const supBlock = /insert into tmp_sup values([\s\S]*?);\n/.exec(sql)?.[1] ?? "";
+  for (const line of supBlock.split("\n").filter((l) => l.trim().startsWith("("))) {
+    const v = sqlValues(line);
+    suppliers.set(v[0]!, v[1]!);
+  }
   const prodBlock = /insert into tmp_prod values([\s\S]*?);\n/.exec(sql)?.[1] ?? "";
   return prodBlock
     .split("\n")
@@ -50,6 +63,10 @@ export function viveroRows(root = process.cwd()): ViveroRow[] {
         unit: v[7] ?? "",
         packLabel: v[8] ?? "",
         pack: Number(v[9] ?? 1),
+        cost: Number(v[10] ?? 0),
+        supplier: suppliers.get(v[12] ?? "") ?? v[12] ?? "proveedor",
+        min: Number(v[13] ?? 0),
+        par: Number(v[14] ?? 0),
         menu: v[16] ?? null,
       };
     });
@@ -63,7 +80,9 @@ export function viveroProducts(root = process.cwd()): Product[] {
     const factor = dimension === "mass" ? 1000 : dimension === "volume" ? r.ml! : 1;
     const packs: Pack[] = [];
     const pack = (name: string, qty: number, count: boolean, purchase: boolean) =>
-      packs.push({ id: `${id.slice(0, -4)}${String(packs.length + 1).padStart(4, "0")}`, name, qtyBase: String(qty), isCountDefault: count, isPurchaseDefault: purchase });
+      // Único por producto: nº de producto (8 cifras) + nº de formato (4). Antes se recortaba el id del
+      // producto y todos los productos compartían los mismos ids de formato.
+      packs.push({ id: `${id.slice(0, -12)}${String(n + 1).padStart(8, "0")}${String(packs.length + 1).padStart(4, "0")}`, name, qtyBase: String(qty), isCountDefault: count, isPurchaseDefault: purchase });
     if (dimension === "volume") pack(r.unit === "barril" ? r.fmt.split(" ·")[0]! : `Botella ${r.fmt.split(" ·")[0]}`, factor, true, r.pack === 1);
     else if (dimension === "mass") pack("Kg", 1000, true, r.pack === 1);
     if (r.pack > 1) pack(r.packLabel, r.pack * factor, false, true);

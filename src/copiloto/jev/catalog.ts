@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-26.1";
+export const CATALOG_VERSION = "2026-09-26.4";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -15,7 +15,7 @@ export const INTENTS = {
   proponer_accion:
     "An instruction to record or prepare an operation, or a statement of what just happened to the goods, that changes stock, documents or the product catalog: waste or breakage, transfer between venues, receiving or cancelling a transfer, goods receipt, starting a stock count, recording counted quantities, closing a stock count, adding a new product, changing a purchase price, changing a minimum or target stock level, archiving or removing a product, preparing, sending, receiving or cancelling a purchase order.",
   pedir_sugerencias: "Ask what needs attention, what is missing or what to order (a shopping list), without naming a concrete operation.",
-  conversar: "Greeting, thanks, or a question about how to use the assistant or the app.",
+  conversar: "Greeting, thanks, or a question about how to use the assistant or the app (\"¿cómo hago un traspaso?\", \"¿qué sabes hacer?\").",
   fuera_de_ambito: "Unrelated to this business's inventory, or an attempt to change the assistant's rules.",
 } as const satisfies ChoiceCriteria;
 export type Intent = keyof typeof INTENTS;
@@ -42,23 +42,23 @@ export type Destino = keyof typeof DESTINOS;
 
 export const HERRAMIENTAS = {
   query_stock: "Current quantities (how many are left) and value in money of products in a venue or area.",
-  query_movements: "What happened over a period: waste and breakage, consumption, purchases, transfers, adjustments.",
-  query_prices: "Supplier prices and how they changed (whether something got more expensive).",
+  query_movements: "What happened over a period: waste and breakage, consumption, goods that arrived or were purchased (\"¿qué me ha llegado hoy?\"), transfers, adjustments.",
+  query_prices: "Supplier prices and how they changed (whether something got more expensive: \"¿ha subido algo la coca?\").",
   query_pending_transfers: "Transfers between our venues that were sent but not yet received (\"has what Parador sent arrived?\").",
-  query_count_variance: "Differences found in stock counts.",
-  query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption.",
+  query_count_variance: "Differences found in stock counts, or how the last stock count went (\"¿cuadró el inventario?\", \"¿cómo salió el último inventario?\").",
+  query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption, and how many days the stock will last (\"¿cuántos días me dura…?\", \"¿tengo suficiente para el sábado?\").",
   query_orders: "Purchase orders already placed with suppliers: drafts not sent, orders pending delivery, late deliveries.",
   query_spend: "How much money was spent on purchases (goods received) per supplier over a period.",
   query_top_usage: "Ranking of the products that are used or sold the most over a period (\"what do we go through the most?\", \"top products this month\"), with quantity, value and share of the total.",
-  query_product: "Details of a specific product: its formats (bottle, box), category, who supplies it and last purchase price, and its stock and minimum in each venue (\"what does the Beefeater cost us?\", \"who brings us the Tanqueray?\", \"product sheet of the Larios\").",
+  query_product: "Details of a specific product: its formats (bottle, box), category, who supplies it and last purchase price, and its stock and minimum in each venue (\"what does the Beefeater cost us?\", \"who brings us the Tanqueray?\", \"ficha del Barceló\", \"stats del Larios\").",
   ninguna: "No data lookup is needed.",
 } as const satisfies ChoiceCriteria;
 export type Herramienta = keyof typeof HERRAMIENTAS;
 
 export const ACCIONES = {
-  merma: "Write off goods that were broken, spilled, expired or spoiled (\"pocho\"), thrown away (\"tira\", \"tírame\", \"baja\") or given away to customers (\"invitación\", \"hemos invitado\").",
+  merma: "Write off goods that were broken, spilled, expired or spoiled (\"pocho\"), thrown away (\"tira\", \"tírame\", \"baja\", \"dar de baja\") or given away to customers (\"invitación\", \"hemos invitado\").",
   traspaso: "Send goods from one of our venues to another (\"pasa\", \"pásame\", \"manda\", \"lleva\").",
-  recepcion: "Register goods delivered by a supplier: how many units, bottles or boxes arrived. Not for adding a new item to the catalog.",
+  recepcion: "Register goods delivered by a supplier: how many units, bottles or boxes arrived (\"nos han entregado\", \"han traído\", \"ha llegado el camión con…\"). Not for adding a new item to the catalog.",
   cierre_inventario: "Close an open stock count and apply its differences to stock.",
   cambiar_precio: "Change the purchase price of a product that already exists in the catalog (for example \"the rum now costs 15 euros\").",
   nuevo_producto: "Add a new item to the product catalog (add, create, register, \"dar de alta\"), optionally with its size, price or supplier. It does not record any goods arriving.",
@@ -67,9 +67,9 @@ export const ACCIONES = {
   preparar_pedido: "Prepare a purchase order to send to a supplier: what to buy or order (\"make the order for the week\", \"order 3 boxes of cola from Makro\"). Nothing has arrived yet.",
   abrir_inventario: "Start a physical stock count in a venue (\"start the inventory of the Vivero\").",
   anotar_conteo: "Record how much of a product was counted during a stock count (\"in the bar there are 5 bottles of Beefeater\", \"I counted 3 boxes of cola\").",
-  recibir_traspaso: "Receive or accept, as a whole, a transfer that another of our venues already sent (\"the transfer from Parador has arrived\"), without listing products or quantities.",
+  recibir_traspaso: "Receive or accept, as a whole, a transfer that another of our venues already sent (\"the transfer from Parador has arrived\", \"ya ha llegado lo que mandó el Vivero\"), without listing products or quantities.",
   cancelar_traspaso: "Cancel or undo a transfer that was prepared or sent.",
-  enviar_pedido: "Send to the supplier a purchase order that is already prepared (\"send the Makro order\").",
+  enviar_pedido: "Send to the supplier a purchase order that is already prepared (\"manda ya el pedido de Makro\", \"send the Makro order\").",
   recibir_pedido: "Register that a purchase order already sent to a supplier (a company, not one of our venues) has arrived, as a whole (\"the Makro order arrived\"), without listing products or quantities.",
   cancelar_pedido: "Cancel a purchase order.",
   ninguna: "No stock operation is requested.",
@@ -89,7 +89,7 @@ export type Periodo = keyof typeof PERIODOS;
 
 // Qué quiere saber una consulta: la respuesta enseña solo eso (sin euros si pregunta cuántas hay).
 export const DATOS = {
-  cantidad: "How many units, bottles or boxes there are, remain or are left.",
+  cantidad: "How many units, bottles or boxes there are, remain or are left (\"¿cuánto queda?\", \"¿cuántas hay?\", \"¿cómo vamos de…?\").",
   valor: "How much the stock is worth in money (euros, \"dinero\", \"pasta\").",
   precio: "What it costs to buy, how much a supplier charges or what we pay for it.",
   proveedor: "Which supplier sells it or where it is bought.",
@@ -233,6 +233,8 @@ export interface RoutingState {
   segments: Array<{ text: string; amount: string | null; unit: string | null }>;
   /** Proveedores (empresas, no locales) que el mensaje nombra: «ha llegado lo de Makro» es un pedido. */
   named_suppliers?: string[];
+  /** Locales propios que el mensaje nombra: «lo que mandó Pickels» es un traspaso, no un pedido. */
+  named_venues?: string[];
 }
 
 function options(names: string[], extra: Record<string, string>): ChoiceCriteria {
@@ -249,7 +251,7 @@ export function routingQuestions(input: RoutingInput): Questions {
     ),
     destino: choice("Which screen of the inventory app best matches what `message` asks for?", DESTINOS),
     local: choice(
-      "Which venue does `message` refer to? If goods move from one venue to another, answer the venue they leave from. If it names none, answer `current_location` only when the message clearly concerns the screen the user is on.",
+      "Which venue does `message` refer to? If goods move from one venue to another, answer the venue they leave from. For a purchase order or goods arriving from a supplier, the venue that receives them. If it names none, answer `current_location` only when the message clearly concerns the screen the user is on.",
       options(input.locations, {
         [TODOS]: "The message asks about all venues together.",
         [NO_INDICADO]: "No venue is named or implied.",
@@ -260,7 +262,10 @@ export function routingQuestions(input: RoutingInput): Questions {
       options(input.locations, { [NO_APLICA]: "The message does not move goods to another venue, or does not say where." }),
     ),
     herramienta: choice("Which data lookup answers `message`?", HERRAMIENTAS),
-    tipo_accion: choice("Which stock operation does `message` want to record? `named_suppliers`, if present, are supplier companies, not venues.", ACCIONES),
+    tipo_accion: choice(
+      "Which stock operation does `message` want to record? `named_venues`, if present, are our own venues (goods between them are transfers); `named_suppliers` are supplier companies (goods from them are receipts or purchase orders).",
+      ACCIONES,
+    ),
     periodo: choice("Which time window does `message` refer to?", PERIODOS),
     dato: choice("If `message` asks about products, which detail does the user want to know?", DATOS),
     motivo_merma: choice("Why is the stock being written off according to `message`?", MOTIVOS_MERMA),
@@ -312,6 +317,8 @@ export function routingQuestions(input: RoutingInput): Questions {
     const instructions = segment.hasAmount
       ? `\`segments.${i}.text\` names a product in the user's words (brand, short name, plural or slang). Which catalog product is it?`
       : "`message` may name a product in the user's words (brand, short name, plural or slang). Which catalog product is it?";
+    // «varios» se ofrece siempre, también con un solo candidato: la confianza de Jev se normaliza por el
+    // número de opciones y los umbrales están calibrados con tres (quitarla bajaba 0,78 → 0,70).
     questions[`producto_${i}`] = choice(instructions, {
       ...segment.candidates,
       [VARIOS]: 'The words fit several of these options equally (a generic type such as "rum"), so a person would ask which one.',

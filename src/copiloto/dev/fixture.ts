@@ -131,7 +131,7 @@ export class FixtureDataSource implements InventoryDataSource {
   /** Pedidos abiertos simulados (vacío salvo que un test los añada). */
   openOrderLines: OpenOrderRaw[] = [];
 
-  constructor(private readonly now: Date = new Date()) {}
+  constructor(protected readonly now: Date = new Date()) {}
 
   async orders(filter: { locationIds: string[]; statuses: OrderRaw["status"][] }): Promise<OrderRaw[]> {
     const day = (h: number) => hoursAgo(this.now, h).slice(0, 10);
