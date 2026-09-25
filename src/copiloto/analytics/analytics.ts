@@ -438,6 +438,7 @@ export class Analytics {
         chart = q.productIds.length === 1 && q.locationIds.length > 1 ? await this.stockByLocation(q) : await this.topStockProducts(q);
         break;
       case "query_movements":
+      case "query_top_usage":
         chart = await this.dailyUsage(q);
         break;
       case "query_prices":
@@ -475,4 +476,5 @@ export const VIEW_FOR_TOOL: Record<ToolName, AnalyticsView> = {
   query_orders: "reposicion",
   query_spend: "resumen",
   query_product: "stock",
+  query_top_usage: "consumo",
 };

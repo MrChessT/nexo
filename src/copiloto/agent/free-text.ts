@@ -30,7 +30,10 @@ function isYes(text: string): boolean {
 }
 
 /** Palabras que no ayudan a reconocer una opción («el Brugal», «es una merma», «al Vivero»). */
-const FILLERS = new Set(["el", "la", "los", "las", "un", "una", "unos", "unas", "es", "de", "del", "al", "a", "en", "para", "desde", "eso", "esa", "ese", "pues", "mejor", "vale"]);
+const FILLERS = new Set([
+  "el", "la", "los", "las", "un", "una", "unos", "unas", "es", "de", "del", "al", "a", "en", "para", "desde", "eso", "esa", "ese", "pues",
+  "mejor", "vale", "no", "perdona", "perdon", "espera", "digo", "osea", "o", "sea", "porfa",
+]);
 
 /**
  * ¿El texto nombra esta opción? Cada palabra con sentido del texto debe parecerse a alguna palabra
@@ -82,6 +85,14 @@ export function readFreeText(pending: PendingClarify, text: string, ctx: Session
     if (locations.length === 1) return { kind: "option", optionId: locations[0]!.name };
   }
   return { kind: "unknown" };
+}
+
+/**
+ * Una pregunta completa («¿cuánto ron queda en Parador?») no completa la orden abierta: es un mensaje
+ * nuevo. Pegada a «quita unas cocas», Jev ya no sabía qué se pedía y preguntaba «¿Qué quieres hacer?».
+ */
+export function isNewQuestion(text: string): boolean {
+  return /[¿?]/.test(text) && tokenize(text).length >= 3;
 }
 
 /** Respuestas de aclaraciones anteriores que no dependen de la posición de un producto en el mensaje. */

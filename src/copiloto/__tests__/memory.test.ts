@@ -15,7 +15,8 @@ describe("memoria de la conversación", () => {
 
     expect(find(events, "decision")!.decisions).toEqual(expect.arrayContaining([expect.objectContaining({ id: "seguimiento", valueLabel: "Continúa lo anterior" })]));
     expect(find(events, "navigate")).toMatchObject({ route: "/stock", filters: { locationId: VIVERO!.id, productId: BARCELO.id } });
-    expect(find(events, "done")!.text).toContain(`Sigo con ${BARCELO.name}.`);
+    // El titular ya nombra el producto heredado: sin «Sigo con…» delante.
+    expect(find(events, "done")!.text).toBe(`No hay stock registrado de ${BARCELO.name} en Vivero.`);
     // Jev recibe la conversación para resolver la referencia.
     expect((jev.calls[1]!.state as { recent_turns: unknown[] }).recent_turns).toHaveLength(2);
   });
@@ -27,7 +28,7 @@ describe("memoria de la conversación", () => {
     await run(agent, chat("¿cuánto ron Barceló queda en Parador?"));
     const events = await run(agent, chat("¿y el Brugal?"));
     expect(find(events, "navigate")).toMatchObject({ filters: { locationId: PARADOR!.id, productId: BRUGAL.id } });
-    expect(find(events, "done")!.text).toContain("Sigo con Parador");
+    expect(find(events, "done")!.text).toBe("Stock de Ron Brugal Añejo 70 cl en Parador: 7 botellas.");
   });
 
   it("una pregunta nueva no hereda nada aunque venga justo después", async () => {

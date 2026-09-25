@@ -13,7 +13,7 @@ describe("compuertas de confianza", () => {
   });
 
   it("el mismo reparto actúa en una lectura pero no en una escritura", () => {
-    const answer = choiceAnswer(["a", "b", "c", "d"], "a", 0.88); // confianza 0,84
+    const answer = choiceAnswer(["a", "b", "c", "d"], "a", 0.78); // confianza 0,71
     expect(gateChoice(answer, DEFAULT_THRESHOLDS.intent_lectura).outcome).toBe("actuar");
     expect(gateChoice(answer, DEFAULT_THRESHOLDS.intent_accion).outcome).toBe("confirmar");
     expect(gateChoice(answer, DEFAULT_THRESHOLDS.cierre_inventario).outcome).toBe("confirmar");

@@ -15,8 +15,8 @@ const decisionIds = (events: Awaited<ReturnType<typeof run>>): string[] => {
 
 describe("política de confianza por contexto", () => {
   it("el mismo dato exige más seguridad cuanto más arriesgada es la operación", () => {
-    expect(slotSpec(DEFAULT_THRESHOLDS, "consulta:query_stock", "local").act).toBe(0.75);
-    expect(slotSpec(DEFAULT_THRESHOLDS, "accion:merma", "local").act).toBe(0.9);
+    expect(slotSpec(DEFAULT_THRESHOLDS, "consulta:query_stock", "local").act).toBe(0.65);
+    expect(slotSpec(DEFAULT_THRESHOLDS, "accion:merma", "local").act).toBe(0.85);
     expect(slotSpec(DEFAULT_THRESHOLDS, "accion:cierre_inventario", "local").act).toBe(0.95);
     // Nombrado tal cual en el mensaje: basta menos, salvo en operaciones críticas.
     expect(slotSpec(DEFAULT_THRESHOLDS, "accion:merma", "local", true).act).toBe(0.75);

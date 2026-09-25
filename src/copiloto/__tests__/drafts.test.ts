@@ -53,7 +53,8 @@ describe("borradores desde el chat", () => {
     });
     expect(draft.title).toBe(`Merma: 2 × Botella 70 cl de ${BARCELO} en Parador · Barra 1`);
     expect((await drafts.get(draft.draftId, fixtureContext().userId, ORG_ID))?.status).toBe("pendiente");
-    expect(find(events, "done")!.text).toContain("He preparado un borrador");
+    // El título ya va en la tarjeta: el texto es solo la indicación.
+    expect(find(events, "done")!.text).toBe("Revísalo y confírmalo si está bien.");
     expect(audit.events.map((e) => e.type)).toEqual(["borrador", "mensaje"]);
   });
 
@@ -110,6 +111,14 @@ describe("borradores desde el chat", () => {
     expect(staff.warnings).toContain("Se guardará como borrador: enviarlo requiere rol de encargado.");
     const manager = find(await run(makeAgent(new FakeJev([script, { coherencia: 0.9 }])).agent, chat(message), "manager"), "draft") as TransferDraft;
     expect(manager.send).toBe(true);
+  });
+
+  it("Jev comprueba la cantidad tal como se pidió («30 unidades», no solo «1 caja + 6 ud»)", async () => {
+    const script = { intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "traspaso", local: "Parador", local_destino: "Vivero", producto_0: { winner: "Coca-Cola 20 cl", p: 0.99 }, cantidad_ok_0: 0.95 };
+    const jev = new FakeJev([script, { coherencia: 0.9 }]);
+    const draft = find(await run(makeAgent(jev).agent, chat("pasa 30 unidades de coca de Parador al Vivero")), "draft") as TransferDraft;
+    expect(draft.title).toContain("1 caja + 6 ud de Coca-Cola 20 cl");
+    expect((jev.calls[1]!.state as { draft: { lines: string } }).draft.lines).toBe("30 ud (= 1 caja + 6 ud) de Coca-Cola 20 cl");
   });
 
   it("cantidad sin unidad («6 cocas») → pregunta el formato en vez de suponerlo", async () => {

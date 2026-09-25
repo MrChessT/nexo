@@ -12,7 +12,7 @@ import { JevError, type JevPort, type JevResult } from "../jev/client";
 import { StageTimer, type Metrics } from "../metrics/metrics";
 import { DataError } from "../supabase/client";
 import { Analytics, VIEW_FOR_TOOL } from "../analytics/analytics";
-import { businessDay, horizon, pastPeriod } from "../tools/periods";
+import { businessDay, daysInclusive, horizon, pastPeriod } from "../tools/periods";
 import type { ToolName, Tools } from "../tools/tools";
 import type { EvalItem, ToolParams } from "../tools/types";
 import type { Writer } from "../writer/writer";
@@ -27,7 +27,7 @@ import { HabitsStore } from "./habits";
 import type { Draft } from "../contract/index";
 import type { ConfirmResponse } from "../drafts/confirm";
 import { isShortcut, resolveShortcut } from "./shortcuts";
-import { ENTITY_FIELDS, fieldOverrides, readFreeText, type FreeTextAnswer } from "./free-text";
+import { ENTITY_FIELDS, fieldOverrides, isNewQuestion, readFreeText, type FreeTextAnswer } from "./free-text";
 import { tokenize } from "../entities/normalize";
 import { tableFor } from "../writer/table";
 import { followUpsFor } from "./followups";
@@ -81,12 +81,13 @@ const TOOL_ROUTE: Record<ToolName, AppRoute> = {
   query_orders: "/pedidos",
   query_spend: "/recepciones",
   query_product: "/productos",
+  query_top_usage: "/informes",
 };
 
 /** Consultas cuya gráfica repite la tabla. */
 const CHART_REPEATS_TABLE = new Set<ToolName>(["query_stock", "query_spend"]);
 
-const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes" };
+const DEFAULT_PERIOD: Partial<Record<ToolName, "semana" | "mes">> = { query_movements: "semana", query_spend: "mes", query_top_usage: "mes" };
 
 function errorEvent(err: unknown): ErrorEvent {
   if (err instanceof JevError) {
@@ -173,7 +174,7 @@ export class Agent {
           pageContext = pending.pageContext;
           overrides = option !== null ? { ...pending.overrides, [overrideKey(pending, option)]: overrideValue(option) } : quantityOverrides(pending, typed!);
           reuse = pending.routing;
-        } else if (ENTITY_FIELDS.has(pending.field) && !pending.restart) {
+        } else if (ENTITY_FIELDS.has(pending.field) && !pending.restart && !isNewQuestion(text)) {
           // Falta un dato de la orden y no encaja con ninguna opción: se completa la orden original.
           message = `${pending.message}. ${text}`.slice(0, 1000);
           page = pending.page;
@@ -455,13 +456,15 @@ export class Agent {
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
     // «En tus 4 locales» ya lo dice el titular: sin avisos que lo repitan.
+    // Lo heredado («¿y en Parador?») ya se ve en el titular («Stock de Barceló en Parador»); solo
+    // «los mismos productos» (el titular dice «de 7 productos») necesita decirse.
     const notices: string[] = [];
-    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}.`);
+    if (plan.inherited?.includes("los mismos productos")) notices.push("Sigo con los mismos productos.");
 
     // Lo que ya se sabe sale ya: la tabla no espera a la valoración de Jev (llamada nº 2), y la gráfica
     // se calcula a la vez que esa valoración.
     const evaluated = result.evalItems.length > 0;
-    const table = tableFor(result, evaluated);
+    const table = tableFor(result, evaluated, plan.dato);
     if (table) await emit({ event: "table", data: table });
 
     const scope = {
@@ -513,7 +516,7 @@ export class Agent {
       await emit({ event: "actions", data: { actions: followUps.map((f) => ({ id: f.id, label: f.label })) } });
     }
 
-    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}) };
+    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}), ...(plan.dato ? { dato: plan.dato } : {}) };
   }
 
   /** Llamada nº 2: Jev juzga las cifras calculadas. Devuelve null si Jev falla (se degrada sin valoración). */
@@ -597,10 +600,6 @@ export function smallTalk(message: string): "hola" | "gracias" | "adios" | undef
   if (/^(adios|hasta luego|hasta manana|chao|nos vemos|bye)\b/.test(text)) return "adios";
   if (/^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ey)\b/.test(text)) return "hola";
   return undefined;
-}
-
-function daysInclusive(from: string, to: string): number {
-  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
 }
 
 /** Productos y locales que menciona un borrador (para heredarlos en el siguiente mensaje). */

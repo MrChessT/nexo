@@ -13,6 +13,7 @@ import {
   TODOS,
   VARIOS,
   type Accion,
+  type Dato,
   type Destino,
   type Herramienta,
   type Intent,
@@ -60,6 +61,8 @@ export interface QueryPlan {
   periodo: Periodo;
   /** Lo heredado del mensaje anterior, para decírselo al usuario ("Barceló", "Parador"…). */
   inherited?: string[];
+  /** Qué quiere saber (cantidad, precio, valor…): la respuesta enseña solo eso. Sin él, todo. */
+  dato?: Dato;
 }
 
 export interface NavigatePlan {
@@ -284,6 +287,13 @@ export class Interpreter {
       if (agreement < t.consistencia.act) intentOutcome = worst(intentOutcome, "confirmar");
     }
 
+    // «Ha llegado el traspaso del Parador»: proponer_accion 0,66 (dudoso) pero recibir_traspaso 0,99.
+    // Si Jev tiene clarísima la operación concreta, la intención queda corroborada: preguntar «¿Qué
+    // quieres hacer?» sobraría, y el resultado es un borrador que nunca se ejecuta sin confirmar.
+    if (intentValue === "proponer_accion" && intentOutcome === "confirmar" && this.overrides.intent === undefined && this.actionCorroborates()) {
+      intentOutcome = "actuar";
+    }
+
     if (intentValue === "fuera_de_ambito") {
       return this.done(intentValue, intentOutcome === "actuar" ? { type: "fuera_de_ambito" } : { type: "conversar" });
     }
@@ -302,6 +312,19 @@ export class Interpreter {
       case "proponer_accion":
         return this.done(intentValue, this.action());
     }
+  }
+
+  /** Qué dato pide la consulta. Sin seguridad suficiente, «general» (se enseña todo, como antes). */
+  private readDato(): Dato {
+    const g = this.gate("dato", "Dato", this.thresholds.dato);
+    return g && g.outcome === "actuar" ? (g.choice as Dato) : "general";
+  }
+
+  /** ¿Jev está seguro de una operación concreta (no «ninguna»)? Nunca para cerrar inventario. */
+  private actionCorroborates(): boolean {
+    const answer = this.choice("tipo_accion");
+    if (!answer || answer.choice === "ninguna" || answer.choice === "cierre_inventario") return false;
+    return gateChoice(answer, this.thresholds.tipo_accion).outcome === "actuar";
   }
 
   /** Confirmar o descartar el borrador pendiente. Ejecutar exige mucha seguridad; si no, se pregunta. */
@@ -513,9 +536,12 @@ export class Interpreter {
     }
     const areaId = area.outcome === "actuar" ? area.id : null;
     const areaLocation = areaId ? this.ctx.areas.find((a) => a.id === areaId)?.locationId : undefined;
+    const dato = this.readDato();
+    tool = toolForDato(tool, dato, products.length);
     return {
       type: "consultar",
       tool: tool as ToolName,
+      ...(dato !== "general" ? { dato } : {}),
       locationIds: areaLocation ? [areaLocation] : loc.ids,
       locationsDefaulted: areaLocation ? false : loc.defaulted,
       areaId,
@@ -693,6 +719,21 @@ export class Interpreter {
       ...(tooAmbiguous ? { reviewAll: true } : {}),
     };
   }
+}
+
+/**
+ * La consulta que contesta ese dato de esos productos: «¿a cuánto nos sale el Beefeater?» es su
+ * último precio (no la ficha entera), «¿cuántas botellas de Beefeater hay?» su stock, y el proveedor,
+ * los formatos o el mínimo de un producto salen de su ficha. Sin productos, la consulta de Jev.
+ */
+export function toolForDato(tool: Herramienta, dato: Dato, productCount: number): Herramienta {
+  if (productCount === 0) return tool;
+  const lookup = tool === "query_stock" || tool === "query_product";
+  if (dato === "precio" && (lookup || tool === "query_prices")) return "query_prices";
+  if (!lookup) return tool;
+  if (dato === "cantidad" || dato === "valor") return "query_stock";
+  if ((dato === "proveedor" || dato === "formatos" || dato === "minimo") && productCount === 1) return "query_product";
+  return tool;
 }
 
 /** «2 botellas», «1 caja», «6 ud»: la cantidad del mensaje para enseñarla. */

@@ -84,6 +84,17 @@ function describeInput(q: Quantity, product: Product): string {
   return q.pack ? `${formatDecimal(q.input.amount, 4)} × ${q.pack.name}` : formatStock(q.qtyBase, product);
 }
 
+/**
+ * Para la comprobación de coherencia de Jev: la cantidad tal como se pidió y, si difiere, su
+ * equivalencia. «4 cajas + 4 ud» frente a «100 heineken» le parecía otra cantidad (0,14 → 0,93).
+ */
+function describeForJev(q: Quantity, product: Product): string {
+  const shown = describeInput(q, product);
+  if (q.pack) return shown;
+  const asked = `${formatDecimal(q.input.amount, 4)} ${q.input.unit}`;
+  return asked === shown ? shown : `${asked} (= ${shown})`;
+}
+
 export interface BuildInput {
   plan: ActionPlan;
   /** Mensaje del usuario: las acciones de catálogo extraen de él nombre, precio y cantidades. */
@@ -164,7 +175,7 @@ export class DraftBuilder {
     return {
       kind: "draft",
       draft: validateDraft(draft),
-      summary: { operation: "write off (merma)", product: p.product.name, quantity: describeInput(q, p.product), venue: where, reason: reason ?? "not stated" },
+      summary: { operation: "write off (merma)", product: p.product.name, quantity: describeForJev(q, p.product), venue: where, reason: reason ?? "not stated" },
     };
   }
 
@@ -173,6 +184,7 @@ export class DraftBuilder {
     const lines: TransferDraft["lines"] = [];
     const warnings: string[] = [];
     const described: string[] = [];
+    const forJev: string[] = [];
     for (const p of plan.products) {
       const q = this.quantity(p, overrides);
       if ("type" in q) return { kind: "clarify", plan: q };
@@ -186,6 +198,7 @@ export class DraftBuilder {
         lines.push({ productId: p.product.id, productName: p.product.name, qtyBase: q.qtyBase.toString(), baseUnit: p.product.baseUnit, input: q.input });
       }
       described.push(`${describeInput(q, p.product)} de ${p.product.name}`);
+      forJev.push(`${describeForJev(q, p.product)} de ${p.product.name}`);
     }
     if (plan.locationOutcome === "confirmar") warnings.push("Revisa el local de origen.");
     if (plan.toLocationOutcome === "confirmar") warnings.push("Revisa el local de destino.");
@@ -208,7 +221,7 @@ export class DraftBuilder {
     return {
       kind: "draft",
       draft: validateDraft(draft),
-      summary: { operation: "transfer between venues", from, to, lines: described.join("; ") },
+      summary: { operation: "transfer between venues", from, to, lines: forJev.join("; ") },
     };
   }
 
@@ -313,6 +326,7 @@ export class DraftBuilder {
     const area = plan.areaId ? ctx.areas.find((a) => a.id === plan.areaId) ?? null : null;
     const warnings: string[] = [];
     const lines: CountDraft["lines"] = [];
+    const forJev: string[] = [];
     for (const p of plan.products) {
       const q = this.quantity(p, overrides);
       if ("type" in q) return { kind: "clarify", plan: q };
@@ -320,6 +334,7 @@ export class DraftBuilder {
       const before = open.lines.filter((l) => l.productId === p.product.id).reduce((a, l) => a.plus(l.qty), new Decimal(0));
       if (before.gt(0)) warnings.push(`${p.product.name} ya tenía ${formatStock(before, p.product)} contado: se suma.`);
       lines.push({ productId: p.product.id, productName: p.product.name, qtyBase: q.qtyBase.toString(), baseUnit: p.product.baseUnit, input: q.input, text: describeInput(q, p.product) });
+      forJev.push(`${describeForJev(q, p.product)} of ${p.product.name}`);
     }
     if (plan.locationOutcome === "confirmar") warnings.push("Revisa el local.");
     const where = `${name}${area ? ` · ${area.name}` : ""}`;
@@ -334,7 +349,7 @@ export class DraftBuilder {
       areaName: area?.name ?? null,
       lines,
     };
-    return { kind: "draft", draft: validateDraft(draft), summary: { operation: "record counted quantities in the open stock count", venue: where, lines: lines.map((l) => `${l.text} of ${l.productName}`).join("; ") } };
+    return { kind: "draft", draft: validateDraft(draft), summary: { operation: "record counted quantities in the open stock count", venue: where, lines: forJev.join("; ") } };
   }
 
   private async countClose({ plan, ctx, source, now }: BuildInput): Promise<BuildResult> {

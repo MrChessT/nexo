@@ -33,7 +33,7 @@ export function scoreAnswer(levels: number, value: number, confidence = 0.9): Sc
 
 export type Script = Record<string, string | number | { dist: Record<string, number> } | { winner: string; p: number }>;
 
-const DEFAULT_CHOICES = ["no_indicado", "ninguno", "ninguna", "no_aplica"];
+const DEFAULT_CHOICES = ["no_indicado", "ninguno", "ninguna", "no_aplica", "general"];
 
 /**
  * Jev simulado. Para cada pregunta usa el guion; si no hay guion:

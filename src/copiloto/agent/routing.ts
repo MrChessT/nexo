@@ -4,6 +4,7 @@ import type { AppRoute } from "../contract/index";
 import { areaLabel, type Product, type SessionContext } from "../domain";
 import { parseQuantities, type Segment } from "../entities/quantity-parser";
 import { tokenSimilarity, type Retriever } from "../entities/retriever";
+import { namesAll } from "../entities/mentions";
 import { tokenize } from "../entities/normalize";
 import { RESERVED_KEYS, routingQuestions, type RoutingState } from "../jev/catalog";
 import type { Turn } from "./session";
@@ -19,6 +20,22 @@ const MAX_SHOWN = 12;
 export function shortlist<C extends { score: number }>(found: C[]): C[] {
   const top = found[0]?.score ?? 0;
   return found.filter((c) => c.score >= top * 0.4).slice(0, MAX_SHOWN);
+}
+
+const CONNECTORS = new Set(["a", "al", "de", "del", "desde", "en", "hacia", "para", "el", "la", "los", "las"]);
+
+/**
+ * El fragmento tal como lo ve Jev, sin nombres de local o espacio: con «6 cocas de Parador» Jev decía
+ * que ningún producto encajaba (0,80); con «6 cocas», Coca-Cola.
+ */
+export function withoutPlaces(text: string, placeWords: Set<string>): string {
+  const words = text.split(/\s+/).filter((w) => {
+    const tokens = tokenize(w);
+    return tokens.length === 0 || !tokens.every((t) => placeWords.has(t));
+  });
+  while (words.length > 0 && CONNECTORS.has(tokenize(words[words.length - 1]!).join(" "))) words.pop();
+  const kept = words.join(" ").trim();
+  return kept.length > 0 ? kept : text;
 }
 
 export interface RoutingSegment {
@@ -148,8 +165,11 @@ export async function buildRouting(
     current_page: page,
     current_location: currentLocation,
     recent_turns: turns.slice(-4),
-    segments: routingSegments.map((rs) => ({ text: rs.segment.text, amount: rs.segment.amount, unit: rs.segment.unit })),
+    segments: routingSegments.map((rs) => ({ text: withoutPlaces(rs.segment.text, placeWords), amount: rs.segment.amount, unit: rs.segment.unit })),
   };
+  // Solo si el mensaje nombra alguno: Jev no puede saber que «Distribuciones Canarias» es un proveedor.
+  const suppliers = ctx.suppliers.filter((s) => namesAll(message, s.name)).map((s) => s.name);
+  if (suppliers.length > 0) state.named_suppliers = suppliers;
 
   const questions = routingQuestions({
     pendingDraft: !!pendingDraft,
@@ -159,6 +179,8 @@ export async function buildRouting(
     askReason: mentionsReason(message),
     askScreen: mentionsScreen(message),
     askFollowUp: turns.length > 0,
+    // Con cantidades («pasa 6 cocas») es una operación: no hay «qué dato» que preguntar.
+    askAspect: !routingSegments.some((rs) => rs.segment.amount !== null),
     locations: [...locationKeys.keys()],
     areas: [...areaKeys.keys()],
     segments: routingSegments.map((rs) => ({

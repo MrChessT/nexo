@@ -71,6 +71,34 @@ describe("ficha de producto", () => {
     expect(find(events, "navigate")).toMatchObject({ route: "/productos" });
   });
 
+  it("«¿a cuánto nos sale el Barceló?» con dato=precio: solo el último precio, sin ficha ni tabla", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl", dato: "precio" })]));
+    const events = await run(agent, chat("¿a cuánto nos sale el Barceló?"));
+    const text = find(events, "done")!.text;
+    expect(text).toMatch(/^Ron Barceló Añejo 70 cl · Caja 6 botellas: 92,40 € \(Distribuciones Canarias, /);
+    expect(text).not.toContain("Formatos");
+    expect(find(events, "table")).toBeUndefined();
+  });
+
+  it("dato=proveedor → una línea con el proveedor", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl", dato: "proveedor" })]));
+    const text = find(await run(agent, chat("¿a quién le compramos el Barceló?")), "done")!.text;
+    expect(text).toBe("Ron Barceló Añejo 70 cl: se compra a Distribuciones Canarias.");
+  });
+
+  it("dato=cantidad en una ficha → el stock, sin precios", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "Ron Barceló Añejo 70 cl", dato: "cantidad" })]));
+    const text = find(await run(agent, chat("¿cuántas botellas de Barceló tenemos?")), "done")!.text;
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas.");
+    expect(text).not.toContain("€");
+  });
+
+  it("dato=valor → el stock con su valor en euros", async () => {
+    const { agent } = makeAgent(new FakeJev([sheet({ herramienta: "query_stock", producto_0: "Ron Barceló Añejo 70 cl", dato: "valor" })]));
+    const text = find(await run(agent, chat("¿cuánto dinero tenemos en Barceló?")), "done")!.text;
+    expect(text).toContain("4 botellas (60,00 €)");
+  });
+
   it("con un tipo genérico («ron») pregunta de cuál", async () => {
     const { agent } = makeAgent(new FakeJev([sheet({ producto_0: "varios" })]));
     const clarify = find(await run(agent, chat("ficha del ron")), "clarify")!;
