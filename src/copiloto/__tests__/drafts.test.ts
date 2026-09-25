@@ -53,7 +53,8 @@ describe("borradores desde el chat", () => {
     });
     expect(draft.title).toBe(`Merma: 2 × Botella 70 cl de ${BARCELO} en Parador · Barra 1`);
     expect((await drafts.get(draft.draftId, fixtureContext().userId, ORG_ID))?.status).toBe("pendiente");
-    expect(find(events, "done")!.text).toContain("He preparado un borrador");
+    // El título ya va en la tarjeta: el texto es solo la indicación.
+    expect(find(events, "done")!.text).toBe("Revísalo y confírmalo si está bien.");
     expect(audit.events.map((e) => e.type)).toEqual(["borrador", "mensaje"]);
   });
 

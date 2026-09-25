@@ -30,7 +30,10 @@ function isYes(text: string): boolean {
 }
 
 /** Palabras que no ayudan a reconocer una opción («el Brugal», «es una merma», «al Vivero»). */
-const FILLERS = new Set(["el", "la", "los", "las", "un", "una", "unos", "unas", "es", "de", "del", "al", "a", "en", "para", "desde", "eso", "esa", "ese", "pues", "mejor", "vale"]);
+const FILLERS = new Set([
+  "el", "la", "los", "las", "un", "una", "unos", "unas", "es", "de", "del", "al", "a", "en", "para", "desde", "eso", "esa", "ese", "pues",
+  "mejor", "vale", "no", "perdona", "perdon", "espera", "digo", "osea", "o", "sea", "porfa",
+]);
 
 /**
  * ¿El texto nombra esta opción? Cada palabra con sentido del texto debe parecerse a alguna palabra

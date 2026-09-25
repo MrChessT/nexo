@@ -15,7 +15,7 @@ describe("respuestas del asistente", () => {
 
   it("«gracias» recibe una respuesta corta, no la ayuda entera", async () => {
     const { agent } = makeAgent(new FakeJev([{ intent: "conversar", intent_alt: "ninguno" }]));
-    expect(find(await run(agent, chat("gracias!")), "done")!.text).toBe("¡De nada! Aquí estoy si necesitas algo más.");
+    expect(find(await run(agent, chat("gracias!")), "done")!.text).toBe("¡De nada!");
   });
 
   it("el aviso de continuación va antes de los datos, y muchos productos se resumen", async () => {

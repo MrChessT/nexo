@@ -1,6 +1,6 @@
 // Informe de decisión: lo único que ve el redactor. JSON cerrado, sin ids internos ni datos personales.
 import type { ClarifyEvent, Decision, Draft, NavigateEvent } from "../contract/index";
-import type { EvalKind, Intent, Urgency } from "../jev/catalog";
+import type { Dato, EvalKind, Intent, Urgency } from "../jev/catalog";
 import type { ToolName } from "../tools/tools";
 import type { ToolResult } from "../tools/types";
 
@@ -22,7 +22,7 @@ export interface Evaluation {
 }
 
 export type ReportOutcome =
-  | { kind: "consulta"; tool: ToolName; scope: Scope; result: ToolResult; evaluations: Evaluation[]; notices: string[]; tabulated?: boolean }
+  | { kind: "consulta"; tool: ToolName; scope: Scope; result: ToolResult; evaluations: Evaluation[]; notices: string[]; tabulated?: boolean; dato?: Dato }
   | { kind: "navegacion"; navigate: NavigateEvent; destino: string }
   | { kind: "aclaracion"; clarify: ClarifyEvent }
   /** charla: saludo, despedida o agradecimiento (respuesta corta en vez de la ayuda). */
@@ -52,6 +52,7 @@ export function writerView(report: DecisionReport): Record<string, unknown> {
       return {
         tipo: "consulta",
         consulta: o.tool,
+        ...(o.dato ? { dato_pedido: o.dato } : {}),
         ambito: o.scope,
         resultado: { filas: o.result.rows.map(stripIds), totales: o.result.totals, total_filas: String(o.result.count), recortado: o.result.truncated },
         valoraciones: o.evaluations.map((e) => ({ ...e.data, urgencia: e.urgency, relevante: e.relevance >= 0.5 })),

@@ -13,16 +13,21 @@ export interface GateSpec {
 const DEFAULTS = {
   // 0,7 → 0,6 tras la evaluación del 2026-09-23: misma precisión (100 %) y cobertura del 91 % al 98 %.
   intent_lectura: { act: 0.6, ask: 0.45 },
-  intent_accion: { act: 0.85, ask: 0.5 },
+  // Calibrados con 134 frases contra Jev real (2026-09-25): con confianza ≥ 0,85 acertó el 100 % de
+  // las veces (344 decisiones) y entre 0,70 y 0,85 el 93 %. Los borradores nunca se ejecutan sin
+  // confirmar; las operaciones críticas siguen exigiendo 0,95 (policy.ts).
+  intent_accion: { act: 0.75, ask: 0.5 },
   intent_fuera: { act: 0.8, ask: 0.5 },
   destino: { act: 0.8, ask: 0.5 },
   herramienta: { act: 0.65, ask: 0.4 },
-  local_consulta: { act: 0.75, ask: 0.45 },
-  local_borrador: { act: 0.9, ask: 0.6 },
-  tipo_accion: { act: 0.9, ask: 0.6 },
+  // Qué dato pide una consulta: solo cambia qué se enseña, nunca qué se escribe.
+  dato: { act: 0.6, ask: 0.4 },
+  local_consulta: { act: 0.65, ask: 0.45 },
+  local_borrador: { act: 0.85, ask: 0.6 },
+  tipo_accion: { act: 0.85, ask: 0.6 },
   cierre_inventario: { act: 0.95, ask: 0.6 },
-  producto_consulta: { act: 0.75, ask: 0.45, minMargin: 0.25 },
-  producto_borrador: { act: 0.92, ask: 0.6, minMargin: 0.4 },
+  producto_consulta: { act: 0.65, ask: 0.45, minMargin: 0.25 },
+  producto_borrador: { act: 0.85, ask: 0.6, minMargin: 0.4 },
   // Noul, "sí" es bueno: valor ≥ act → actuar.
   cantidad: { act: 0.9, ask: 0.6 },
   coherencia: { act: 0.85, ask: 0.6 },

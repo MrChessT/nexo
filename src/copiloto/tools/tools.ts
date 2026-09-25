@@ -179,6 +179,7 @@ export class InventoryTools implements Tools {
       categoria: product.category ?? "sin categoría",
       formatos: product.packs.map((k) => k.name).join(" · ") || "sin formatos",
       compra: buy || "sin precio de compra",
+      proveedores: [...new Set(prices.map((p) => p.supplierName))].join(", ") || "sin proveedor",
       total: formatStock(total, product),
       locales: String(locations.length),
     });

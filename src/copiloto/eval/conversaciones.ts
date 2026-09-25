@@ -48,6 +48,8 @@ interface Expectation {
   navegar?: string;
   /** Texto que debe contener la respuesta final. */
   texto?: string;
+  /** Textos que NO debe contener (lo que sobra: «€» en una pregunta de cantidad, la ficha entera…). */
+  sin?: string[];
 }
 
 interface Turn {
@@ -159,6 +161,7 @@ function check(e: Expectation, events: SseEvent[]): string[] {
   if (e.navegar !== undefined && !navigate.some((n) => n.route === e.navegar && n.auto)) problems.push(`esperaba ir a ${e.navegar}`);
   if (e.consulta && (!done || clarify || draft)) problems.push("esperaba una consulta respondida");
   if (e.texto && !done?.text.includes(e.texto)) problems.push(`la respuesta no dice «${e.texto}»`);
+  for (const extra of e.sin ?? []) if (done?.text.includes(extra)) problems.push(`sobra «${extra}» en la respuesta`);
   return problems;
 }
 

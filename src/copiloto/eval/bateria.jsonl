@@ -86,3 +86,7 @@
 {"kind":"respuesta","field":"tipo_accion","text":"¿cuánto ron queda?","options":[["merma","Merma"],["traspaso","Traspaso"]],"expect":"nuevo"}
 {"kind":"respuesta","field":"borrador","text":"sí, adelante","options":[["confirmar","Sí, confírmalo"]],"expect":"opcion:confirmar"}
 {"kind":"respuesta","field":"borrador","text":"no","options":[["confirmar","Sí, confírmalo"]],"expect":"nuevo"}
+{"kind":"respuesta","field":"local","options":[["Parador","Parador"],["Vivero","Vivero"],["Pickels","Pickels"]],"text":"no, en el parador","expect":"opcion:Parador"}
+{"kind":"respuesta","field":"local","options":[["Parador","Parador"],["Vivero","Vivero"]],"text":"perdona, digo en el vivero","expect":"opcion:Vivero"}
+{"kind":"respuesta","field":"producto","options":[["Larios 12","Larios 12"],["Beefeater","Beefeater"]],"text":"espera, el beefeater","expect":"opcion:Beefeater"}
+{"kind":"respuesta","field":"local","options":[["Parador","Parador"],["Vivero","Vivero"]],"text":"no, pásalo mejor a pickels","expect":"nuevo"}

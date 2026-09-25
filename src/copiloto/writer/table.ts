@@ -1,13 +1,14 @@
 // Tabla de una consulta para el chat: las filas ya formateadas del resultado, con las columnas que
 // importan en cada consulta. Con una sola fila no hace falta tabla (basta el texto).
 import type { TableEvent } from "../contract/index";
+import type { Dato } from "../jev/catalog";
 import type { ToolResult, ToolRow } from "../tools/types";
 
 type Column = TableEvent["columns"][number];
 
 const text = (v: ToolRow[string] | undefined): string => (v === null || v === undefined || typeof v === "boolean" ? "" : v);
 
-function columnsFor(result: ToolResult): { columns: Column[]; flag?: (row: ToolRow) => boolean } {
+function columnsFor(result: ToolResult, dato?: Dato): { columns: Column[]; flag?: (row: ToolRow) => boolean } {
   switch (result.tool) {
     case "query_stock":
       if (result.totals.desglose === "local") {
@@ -19,14 +20,20 @@ function columnsFor(result: ToolResult): { columns: Column[]; flag?: (row: ToolR
       if (result.totals.desglose === "espacio") {
         return { columns: [{ key: "espacio", label: "Sección" }, { key: "producto", label: "Producto" }, { key: "cantidad", label: "Cantidad", align: "right" }] };
       }
+      // El valor en euros solo si se pregunta por él («¿cuánto vale…?»); el local, solo si hay varios.
       return {
-        columns: [{ key: "producto", label: "Producto" }, { key: "local", label: "Local" }, { key: "cantidad", label: "Cantidad", align: "right" }, { key: "valor", label: "Valor", align: "right" }],
+        columns: [
+          { key: "producto", label: "Producto" },
+          ...(new Set(result.rows.map((r) => r.local)).size > 1 ? [{ key: "local", label: "Local" }] : []),
+          { key: "cantidad", label: "Cantidad", align: "right" },
+          ...(dato === "valor" ? [{ key: "valor", label: "Valor", align: "right" as const }] : []),
+        ],
         flag: (r) => r.bajo_minimo === true,
       };
     case "query_movements":
       return { columns: [{ key: "tipo", label: "Tipo" }, { key: "producto", label: "Producto" }, { key: "cantidad", label: "Cantidad", align: "right" }, { key: "valor", label: "Valor", align: "right" }] };
     case "query_prices":
-      return { columns: [{ key: "producto", label: "Producto" }, { key: "proveedor", label: "Proveedor" }, { key: "precio_actual", label: "Precio", align: "right" }] };
+      return { columns: [{ key: "producto", label: "Producto" }, { key: "formato", label: "Formato" }, { key: "proveedor", label: "Proveedor" }, { key: "precio_actual", label: "Precio", align: "right" }] };
     case "query_pending_transfers":
       return { columns: [{ key: "origen", label: "Desde" }, { key: "destino", label: "A" }, { key: "enviado_hace", label: "Enviado" }, { key: "productos", label: "Productos" }] };
     case "query_count_variance":
@@ -52,9 +59,11 @@ function columnsFor(result: ToolResult): { columns: Column[]; flag?: (row: ToolR
 const EVALUATED = new Set<ToolResult["tool"]>(["query_reorder", "query_prices", "query_count_variance"]);
 
 /** null si no hay nada que tabular (una fila o ninguna) o si el texto va por urgencia valorada. */
-export function tableFor(result: ToolResult, evaluated = false): TableEvent | null {
+export function tableFor(result: ToolResult, evaluated = false, dato?: Dato): TableEvent | null {
   if (result.rows.length < 2 || (evaluated && EVALUATED.has(result.tool))) return null;
-  const { columns, flag } = columnsFor(result);
+  // Precio de productos concretos («¿a cuánto nos sale el Beefeater?»): con pocas filas basta el texto.
+  if (dato === "precio" && result.tool === "query_prices" && result.rows.length <= 3) return null;
+  const { columns, flag } = columnsFor(result, dato);
   const present = columns.filter((c) => result.rows.some((r) => text(r[c.key]) !== ""));
   const flagged = flag ? result.rows.flatMap((r, i) => (flag(r) ? [i] : [])) : [];
   return {

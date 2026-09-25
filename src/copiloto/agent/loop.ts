@@ -455,13 +455,15 @@ export class Agent {
 
     const result = await timer.time("herramientas", () => tools.run(plan.tool, params, ctx));
     // «En tus 4 locales» ya lo dice el titular: sin avisos que lo repitan.
+    // Lo heredado («¿y en Parador?») ya se ve en el titular («Stock de Barceló en Parador»); solo
+    // «los mismos productos» (el titular dice «de 7 productos») necesita decirse.
     const notices: string[] = [];
-    if (plan.inherited?.length) notices.push(`Sigo con ${plan.inherited.join(" · ")}.`);
+    if (plan.inherited?.includes("los mismos productos")) notices.push("Sigo con los mismos productos.");
 
     // Lo que ya se sabe sale ya: la tabla no espera a la valoración de Jev (llamada nº 2), y la gráfica
     // se calcula a la vez que esa valoración.
     const evaluated = result.evalItems.length > 0;
-    const table = tableFor(result, evaluated);
+    const table = tableFor(result, evaluated, plan.dato);
     if (table) await emit({ event: "table", data: table });
 
     const scope = {
@@ -513,7 +515,7 @@ export class Agent {
       await emit({ event: "actions", data: { actions: followUps.map((f) => ({ id: f.id, label: f.label })) } });
     }
 
-    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}) };
+    return { kind: "consulta", tool: plan.tool, scope, result, evaluations: evaluations ?? [], notices, ...(table ? { tabulated: true } : {}), ...(plan.dato ? { dato: plan.dato } : {}) };
   }
 
   /** Llamada nº 2: Jev juzga las cifras calculadas. Devuelve null si Jev falla (se degrada sin valoración). */

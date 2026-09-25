@@ -23,9 +23,10 @@ describe("enrutado del agente", () => {
     expect(find(events, "navigate")).toMatchObject({ route: "/stock", auto: false, filters: { locationId: PARADOR!.id } });
     const done = find(events, "done")!;
     expect(done.textSource).toBe("plantilla");
+    // A «¿cuánto queda?» se contesta con la cantidad: sin euros que nadie ha pedido.
     expect(done.text).toContain("3 botellas");
-    expect(done.text).toContain("45,00 €");
-    expect(done.text).toContain("por debajo del mínimo");
+    expect(done.text).not.toContain("€");
+    expect(done.text).toContain("Bajo mínimo (4 botellas)");
     expect(audit.events[0]).toMatchObject({ type: "mensaje", intent: "consultar", outcome: "consulta" });
   });
 
@@ -44,6 +45,8 @@ describe("enrutado del agente", () => {
     expect(Object.keys(questions)).not.toEqual(expect.arrayContaining(["periodo"]));
     expect(Object.keys(questions)).not.toContain("destino");
     expect(Object.keys(questions)).not.toContain("seguimiento");
+    // Con cantidades es una operación: no se pregunta qué dato quiere consultar.
+    expect(Object.keys(questions)).not.toContain("dato");
     expect(JSON.stringify(questions.cantidad_ok_0)).toContain("`segments.0.amount`");
   });
 
@@ -82,7 +85,7 @@ describe("enrutado del agente", () => {
 
     const second = await run(agent, chat("", { message: BRUGAL, clarification: { clarifyId: clarify.clarifyId, optionId: BRUGAL } }));
     const text = find(second, "done")!.text;
-    expect(text).toContain("7 botellas (98,00 €)");
+    expect(text).toContain("7 botellas.");
     expect(text).toContain("en tus 4 locales");
   });
 
@@ -146,6 +149,17 @@ describe("enrutado del agente", () => {
     expect((jev.calls[0]!.state as { segments: Array<{ text: string }> }).segments[0]!.text).toBe("6 cocas");
   });
 
+  it("un proveedor nombrado en el mensaje va en el state; si no hay ninguno, el campo no se envía", async () => {
+    const jev = new FakeJev([{ intent: "proponer_accion", intent_alt: "cambiar", tipo_accion: "recibir_pedido" }, {}, { intent: "consultar", intent_alt: "leer", herramienta: "query_orders" }]);
+    const { agent } = makeAgent(jev);
+    await run(agent, chat("ha llegado lo de distribuciones canarias"));
+    await run(agent, chat("¿qué pedidos tengo pendientes?"));
+    const routed = jev.calls.filter((c) => "intent" in c.questions);
+    expect(routed).toHaveLength(2);
+    expect(routed[0]!.state).toMatchObject({ named_suppliers: ["Distribuciones Canarias"] });
+    expect(routed[1]!.state).not.toHaveProperty("named_suppliers");
+  });
+
   it("Jev caído → error recuperable; los atajos siguen funcionando", async () => {
     const jev = new FakeJev();
     jev.fail = new JevError("unavailable", "caído");
@@ -182,7 +196,7 @@ describe("atajos deterministas", () => {
     expect(clarify.options.map((o) => o.id).slice(0, 2).sort()).toEqual([BARCELO, BRUGAL]);
     const events = await run(agent, chat("", { message: BARCELO, clarification: { clarifyId: clarify.clarifyId, optionId: BARCELO } }));
     const text = find(events, "done")!.text;
-    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas en total (60,00 €).");
+    expect(text).toContain("Stock de Ron Barceló Añejo 70 cl en tus 4 locales: 4 botellas.");
     expect(text).toContain("Parador 3 botellas ⚠ · Pickels 1 botella");
     expect(jev.calls).toHaveLength(0);
   });

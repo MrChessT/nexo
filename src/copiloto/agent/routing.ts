@@ -4,6 +4,7 @@ import type { AppRoute } from "../contract/index";
 import { areaLabel, type Product, type SessionContext } from "../domain";
 import { parseQuantities, type Segment } from "../entities/quantity-parser";
 import { tokenSimilarity, type Retriever } from "../entities/retriever";
+import { namesAll } from "../entities/mentions";
 import { tokenize } from "../entities/normalize";
 import { RESERVED_KEYS, routingQuestions, type RoutingState } from "../jev/catalog";
 import type { Turn } from "./session";
@@ -166,6 +167,9 @@ export async function buildRouting(
     recent_turns: turns.slice(-4),
     segments: routingSegments.map((rs) => ({ text: withoutPlaces(rs.segment.text, placeWords), amount: rs.segment.amount, unit: rs.segment.unit })),
   };
+  // Solo si el mensaje nombra alguno: Jev no puede saber que «Distribuciones Canarias» es un proveedor.
+  const suppliers = ctx.suppliers.filter((s) => namesAll(message, s.name)).map((s) => s.name);
+  if (suppliers.length > 0) state.named_suppliers = suppliers;
 
   const questions = routingQuestions({
     pendingDraft: !!pendingDraft,
@@ -175,6 +179,8 @@ export async function buildRouting(
     askReason: mentionsReason(message),
     askScreen: mentionsScreen(message),
     askFollowUp: turns.length > 0,
+    // Con cantidades («pasa 6 cocas») es una operación: no hay «qué dato» que preguntar.
+    askAspect: !routingSegments.some((rs) => rs.segment.amount !== null),
     locations: [...locationKeys.keys()],
     areas: [...areaKeys.keys()],
     segments: routingSegments.map((rs) => ({
