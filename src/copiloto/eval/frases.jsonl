@@ -132,3 +132,26 @@
 {"message": "¿cómo te confirmo un pedido?", "intent": "conversar", "grupo": "fuera"}
 {"message": "enséñame los informes", "intent": "navegar", "destino": "/informes", "grupo": "fuera"}
 {"message": "vamos a pedidos", "intent": "navegar", "destino": "/pedidos", "grupo": "fuera"}
+{"message": "ha llegado el traspaso del Parador", "intent": "proponer_accion", "tipo_accion": "recibir_traspaso", "grupo": "operaciones"}
+{"message": "ya tenemos aquí lo que mandó Pickels, dale entrada", "intent": "proponer_accion", "tipo_accion": "recibir_traspaso", "grupo": "operaciones"}
+{"message": "cancela el traspaso al Vivero", "intent": "proponer_accion", "tipo_accion": "cancelar_traspaso", "grupo": "operaciones"}
+{"message": "anula el envío que hicimos a La Oliva", "intent": "proponer_accion", "tipo_accion": "cancelar_traspaso", "grupo": "operaciones"}
+{"message": "manda el pedido de Bebidas del Sur", "intent": "proponer_accion", "tipo_accion": "enviar_pedido", "grupo": "operaciones"}
+{"message": "envía ya el pedido de Makro al proveedor", "intent": "proponer_accion", "tipo_accion": "enviar_pedido", "grupo": "operaciones"}
+{"message": "ha llegado el pedido de Distribuciones Canarias", "intent": "proponer_accion", "tipo_accion": "recibir_pedido", "grupo": "operaciones"}
+{"message": "cancela el pedido de Makro", "intent": "proponer_accion", "tipo_accion": "cancelar_pedido", "grupo": "operaciones"}
+{"message": "empieza el inventario del Parador", "intent": "proponer_accion", "tipo_accion": "abrir_inventario", "local": "Parador", "grupo": "operaciones"}
+{"message": "vamos a hacer recuento en el Vivero", "intent": "proponer_accion", "tipo_accion": "abrir_inventario", "local": "Vivero", "grupo": "operaciones"}
+{"message": "en la cámara del Vivero hay 3 botellas de Tanqueray", "intent": "proponer_accion", "tipo_accion": "anotar_conteo", "local": "Vivero", "producto": "Ginebra Tanqueray 70 cl", "grupo": "operaciones"}
+{"message": "he contado 4 cajas de coca en la barra 1 del Parador", "intent": "proponer_accion", "tipo_accion": "anotar_conteo", "local": "Parador", "producto": "Coca-Cola 20 cl", "grupo": "operaciones"}
+{"message": "ficha del Barceló", "intent": "consultar", "herramienta": "query_product", "producto": "Ron Barceló Añejo 70 cl", "grupo": "operaciones"}
+{"message": "¿en qué formatos compramos la tónica?", "intent": "consultar", "herramienta": "query_product", "producto": "Tónica Schweppes 20 cl", "grupo": "operaciones", "dato": "formatos"}
+{"message": "¿qué proveedor nos trae el agua solán?", "intent": "consultar", "herramienta": "query_product", "producto": "Agua Solán de Cabras 50 cl", "grupo": "operaciones", "dato": "proveedor"}
+{"message": "pasa tanqueray del Parador al Vivero", "intent": "proponer_accion", "tipo_accion": "traspaso", "local": "Parador", "local_destino": "Vivero", "producto": "Ginebra Tanqueray 70 cl", "aclarar": true, "grupo": "operaciones"}
+{"message": "haz un traspaso de hielo a Pickels", "intent": "proponer_accion", "tipo_accion": "traspaso", "local_destino": "Pickels", "producto": "Hielo en cubitos", "aclarar": true, "grupo": "operaciones"}
+{"message": "se ha roto tanqueray en el Vivero", "intent": "proponer_accion", "tipo_accion": "merma", "local": "Vivero", "producto": "Ginebra Tanqueray 70 cl", "aclarar": true, "grupo": "operaciones"}
+{"message": "cuantas cajas de cocacola hay", "intent": "consultar", "herramienta": "query_stock", "producto": "Coca-Cola 20 cl", "grupo": "operaciones"}
+{"message": "oye y de agua como vamos en la oliva", "intent": "consultar", "herramienta": "query_stock", "local": "La Oliva", "producto": "Agua Solán de Cabras 50 cl", "grupo": "operaciones"}
+{"message": "¿cuánta coca se ha gastado este mes en el Vivero?", "intent": "consultar", "herramienta": "query_movements", "local": "Vivero", "periodo": "mes", "producto": "Coca-Cola 20 cl", "grupo": "operaciones"}
+{"message": "¿qué es lo que más se gasta?", "intent": "consultar", "herramienta": "query_top_usage", "grupo": "consumo"}
+{"message": "top de productos más vendidos este mes en el Vivero", "intent": "consultar", "herramienta": "query_top_usage", "local": "Vivero", "periodo": "mes", "grupo": "consumo"}

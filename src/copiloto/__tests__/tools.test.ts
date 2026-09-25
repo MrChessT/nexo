@@ -68,6 +68,18 @@ describe("herramientas (solo lectura, decimal.js)", () => {
     expect(rum.evalItems).toHaveLength(0);
   });
 
+  it("lo que más se gasta: ranking por valor consumido, con media diaria y reparto por local", async () => {
+    const r = await tools.run("query_top_usage", base, ctx);
+    expect(r.totals).toMatchObject({ total: "1.134,00 €", productos: "2" });
+    expect(r.rows).toEqual([
+      expect.objectContaining({ posicion: "1", producto: "Coca-Cola 20 cl", cantidad: "70 cajas", valor: "924,00 €", porcentaje: "81 %", al_dia: "2 cajas + 8 ud" }),
+      expect.objectContaining({ posicion: "2", producto: "Ron Barceló Añejo 70 cl", cantidad: "14 botellas", valor: "210,00 €", porcentaje: "19 %", desglose: "Parador 14 botellas" }),
+    ]);
+    // Las mermas no son consumo.
+    const oneLocal = await tools.run("query_top_usage", { ...base, locationIds: [LOCATIONS[2]!.id] }, ctx);
+    expect(oneLocal.rows.map((row) => [row.producto, row.desglose])).toEqual([["Coca-Cola 20 cl", null]]);
+  });
+
   it("desvíos de inventario ordenados por valor", async () => {
     const r = await tools.run("query_count_variance", base, ctx);
     expect(r.evalItems[0]!.data).toMatchObject({ product: "Ginebra Tanqueray 70 cl", diff: "-2 botellas", diff_pct: "-50 %", diff_value: "-34,00 €" });

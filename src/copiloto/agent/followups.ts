@@ -48,6 +48,9 @@ export function followUpsFor(plan: QueryPlan, hasLowStock: boolean): Array<Omit<
     case "query_pending_transfers":
       out.push(query("query_reorder", "Qué reponer"));
       break;
+    case "query_top_usage":
+      out.push(query("query_stock", "Stock actual"), query("query_reorder", "Qué reponer"));
+      break;
     case "query_count_variance":
     case "query_spend":
       break;

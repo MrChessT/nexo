@@ -42,7 +42,7 @@ export function renderTemplate(report: DecisionReport): string {
       if (o.charla === "gracias") return "¡De nada!";
       if (o.charla === "adios") return "¡Hasta luego!";
       if (o.charla === "hola") return "¡Hola! ¿Qué necesitas?";
-      return "Consulto stock, precios, consumo, pedidos y gasto, y te preparo mermas, traspasos, recepciones y pedidos para que los confirmes. Prueba: «¿cuánta coca queda en el Vivero?» o «pasa 2 cajas de tónica del Parador a Pickels».";
+      return "Consulto stock, precios, consumo, lo que más se gasta, pedidos y gasto, y te preparo mermas, traspasos, recepciones y pedidos para que los confirmes. Prueba: «¿cuánta coca queda en el Vivero?» o «pasa 2 cajas de tónica del Parador a Pickels».";
     case "navegacion":
       return o.navigate.auto ? `Te llevo a ${o.destino}.` : `¿Quieres ir a ${o.destino}?`;
     case "borrador": {
@@ -84,6 +84,7 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       query_reorder: `No falta nada ${where} para ${result.totals.horizonte ?? "los próximos días"}.`,
       query_orders: `No hay pedidos abiertos ${where}.`,
       query_spend: `No hay compras registradas ${where}.`,
+      query_top_usage: `No hay consumo registrado ${where}.`,
       query_product: result.totals.producto
         ? `${result.totals.producto} · ${result.totals.categoria}\nFormatos: ${result.totals.formatos}\nCompra: ${result.totals.compra}\nNo está activo en ningún local.`
         : "No encuentro ese producto en el catálogo.",
@@ -157,6 +158,11 @@ function renderQueryBody(o: Extract<DecisionReport["outcome"], { kind: "consulta
       const places = list(result.rows, (r) => `${r.local}: ${r.cantidad}${r.minimo ? ` (mínimo ${r.minimo})` : ""}${r.bajo_minimo ? " ⚠ bajo mínimo" : ""}`, 8);
       // Ficha en líneas cortas: se lee de un vistazo.
       return `${t.producto} · ${t.categoria}\nFormatos: ${t.formatos}\nCompra: ${t.compra}\nStock total: ${t.total}\n${places}`;
+    }
+    case "query_top_usage": {
+      const top = result.rows[0]!;
+      const head = `Lo que más se gasta ${where}: ${top.producto}, ${top.cantidad} (${top.valor}, el ${top.porcentaje} del consumo). Consumo total: ${result.totals.total}.`;
+      return `${head}\n${list(result.rows, (r) => `${r.posicion}. ${r.producto}: ${r.cantidad} (${r.valor}, ${r.porcentaje}) — ${r.al_dia} al día`)}${more}`;
     }
     case "query_spend":
       return `Compras del ${result.totals.desde} al ${result.totals.hasta}: ${result.totals.total} en ${plural(result.totals.albaranes ?? "0", "albarán", "albaranes")}.\n${list(result.rows, (r) => `${r.proveedor}: ${r.importe} (${r.porcentaje})`)}${more}`;

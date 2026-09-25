@@ -52,6 +52,17 @@ function columnsFor(result: ToolResult, dato?: Dato): { columns: Column[]; flag?
       };
     case "query_spend":
       return { columns: [{ key: "proveedor", label: "Proveedor" }, { key: "importe", label: "Importe", align: "right" }, { key: "porcentaje", label: "%", align: "right" }] };
+    case "query_top_usage":
+      return {
+        columns: [
+          { key: "posicion", label: "#", align: "right" },
+          { key: "producto", label: "Producto" },
+          { key: "cantidad", label: "Consumo", align: "right" },
+          { key: "valor", label: "Valor", align: "right" },
+          { key: "porcentaje", label: "%", align: "right" },
+          { key: "desglose", label: "Por local" },
+        ],
+      };
   }
 }
 

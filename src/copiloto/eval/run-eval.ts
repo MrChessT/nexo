@@ -2,8 +2,11 @@
 //   npm run copiloto:eval                  → todas las frases de eval/frases.jsonl
 //   npm run copiloto:eval -- --only 5      → las 5 primeras
 //   npm run copiloto:eval -- --grupo jerga → solo un grupo (natural, jerga, erratas, dato…)
+//   npm run copiloto:eval -- --replay      → sin Jev: repite la última evaluación con las respuestas
+//                                            guardadas (para probar umbrales: GATE_<DECISION>_ACT=…)
 // Escribe el resumen en consola y en docs/copiloto/EVALUACION.md, con la calibración de cada
-// decisión (¿acierta tanto como dice?) y el umbral que recomienda cada contexto.
+// decisión (¿acierta tanto como dice?) y el umbral que recomienda cada contexto, y las respuestas de
+// Jev tal cual en docs/copiloto/eval-respuestas.json (solo frases de prueba y probabilidades).
 import { getVercelOidcToken } from "@vercel/oidc";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +20,7 @@ import { LexicalRetriever } from "../entities/retriever";
 import { asChoice, asNoul } from "../gates/gate";
 import { loadThresholds, type GateKey } from "../gates/thresholds";
 import { CATALOG_VERSION } from "../jev/catalog";
-import { JevClient, JevError, type JevResult } from "../jev/client";
+import { JevClient, JevError, type JevAnswer, type JevResult } from "../jev/client";
 import { Metrics } from "../metrics/metrics";
 import { BIN_EDGES, expectedCalibrationError, recommendThreshold, reliability, sweep, type Point } from "./calibration";
 
@@ -82,8 +85,23 @@ const cases: Case[] = readFileSync(join(process.cwd(), "src/copiloto/eval/frases
   .slice(from)
   .slice(0, only);
 
+const replay = args.includes("--replay");
+const RAW_PATH = join(process.cwd(), "docs/copiloto/eval-respuestas.json");
+interface RawRow {
+  message: string;
+  ms: number;
+  answers: Record<string, JevAnswer>;
+}
+interface RawFile {
+  catalog: string;
+  model: string;
+  date: string;
+  rows: RawRow[];
+}
+const saved: RawFile | null = replay ? (JSON.parse(readFileSync(RAW_PATH, "utf8")) as RawFile) : null;
+
 const config = loadConfig();
-if (!config.jev.apiKey && !config.jev.oidc) throw new Error("Falta TYPESAFE_API_KEY, AI_GATEWAY_API_KEY o VERCEL_OIDC_TOKEN en .env.local");
+if (!replay && !config.jev.apiKey && !config.jev.oidc) throw new Error("Falta TYPESAFE_API_KEY, AI_GATEWAY_API_KEY o VERCEL_OIDC_TOKEN en .env.local");
 const metrics = new Metrics(config.JEV_PRICE_PER_MTOK_USD);
 const jev = new JevClient({
   apiKey: config.jev.oidc ? () => getVercelOidcToken() : config.jev.apiKey,
@@ -111,6 +129,7 @@ interface Row {
   plan: Plan["type"];
   verdict: "correcto" | "pregunta" | "error_peligroso" | "error";
   detail: string;
+  raw: RawRow;
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -138,7 +157,18 @@ function expectedPlans(c: Case): Array<Plan["type"]> {
 
 async function evaluate(c: Case): Promise<Row> {
   const built = await buildRouting(c.message, "/", undefined, [], ctx, retriever, config.JEV_SELF_CONSISTENCY);
-  const result = await evaluateJev(built.state as unknown as EntryType, built.questions);
+  let result: Pick<JevResult, "answers">;
+  let ms: number;
+  if (saved) {
+    const previous = saved.rows.find((r) => r.message === c.message);
+    if (!previous) throw new Error(`Sin respuesta guardada para «${c.message}»: vuelve a evaluar con Jev`);
+    result = previous;
+    ms = previous.ms;
+  } else {
+    const started = Date.now();
+    result = await evaluateJev(built.state as unknown as EntryType, built.questions);
+    ms = Date.now() - started;
+  }
   const answers: Row["answers"] = {};
   for (const field of FIELDS) {
     const valid = labels(c[field]);
@@ -158,7 +188,7 @@ async function evaluate(c: Case): Promise<Row> {
   else if (expectedPlans(c).includes(plan.type) && wrongFields.length === 0) verdict = "correcto";
   else verdict = writes ? "error_peligroso" : "error";
   const detail = plan.type === "clarify" ? `pregunta por ${plan.field}${wrongFields.length ? ` (${wrongFields.join(", ")})` : ""}` : wrongFields.join(", ");
-  return { c, answers, plan: plan.type, verdict, detail };
+  return { c, answers, plan: plan.type, verdict, detail, raw: { message: c.message, ms, answers: result.answers } };
 }
 
 /** Contexto de riesgo de la frase: los umbrales de local, producto e intención dependen de él. */
@@ -202,7 +232,17 @@ async function main() {
 
   out(`# Resultados de evaluación`);
   out();
-  out(`Catálogo ${CATALOG_VERSION} · modelo ${config.jev.model} (${config.jev.via}) · ${rows.length} frases · ${new Date().toISOString()}`);
+  out(
+    saved
+      ? `Repetición sin Jev de la evaluación del ${saved.date} (catálogo ${saved.catalog}, modelo ${saved.model}) · ${rows.length} frases`
+      : `Catálogo ${CATALOG_VERSION} · modelo ${config.jev.model} (${config.jev.via}) · ${rows.length} frases · ${new Date().toISOString()}`,
+  );
+  if (saved && saved.catalog !== CATALOG_VERSION) out(`⚠ Las preguntas han cambiado desde entonces (catálogo ${CATALOG_VERSION}): hay que volver a evaluar con Jev.`);
+  out();
+  // Incluye las esperas por reintentos cuando el proveedor está saturado.
+  const times = rows.map((r) => r.raw.ms).sort((a, b) => a - b);
+  const at = (q: number) => times[Math.min(times.length - 1, Math.floor(q * times.length))] ?? 0;
+  out(`Latencia de la llamada nº 1: mediana ${at(0.5)} ms · p90 ${at(0.9)} ms · máxima ${times[times.length - 1] ?? 0} ms.`);
   out();
   out(`## Por mensaje`);
   out();
@@ -289,11 +329,17 @@ async function main() {
   for (const r of rows.filter((x) => x.verdict !== "correcto")) out(`| ${r.c.message} | ${r.c.grupo ?? "base"} | ${r.verdict} | ${r.plan} | ${r.detail} |`);
   out();
   const snap = metrics.snapshot();
-  out(`Coste Jev de esta evaluación: ${snap.jev.calls} llamadas, ${snap.jev.inputTokens} tokens de entrada, ~${snap.jev.estimatedCostUsd} $.`);
+  if (!saved) out(`Coste Jev de esta evaluación: ${snap.jev.calls} llamadas, ${snap.jev.inputTokens} tokens de entrada, ~${snap.jev.estimatedCostUsd} $.`);
 
   const report = lines.join("\n");
   // Solo la evaluación completa sustituye el informe guardado.
-  if (!group && only === Infinity && from === 0) writeFileSync(join(process.cwd(), "docs/copiloto/EVALUACION.md"), `${report}\n`, "utf8");
+  if (!group && only === Infinity && from === 0) {
+    writeFileSync(join(process.cwd(), "docs/copiloto/EVALUACION.md"), `${report}\n`, "utf8");
+    if (!saved) {
+      const raw: RawFile = { catalog: CATALOG_VERSION, model: config.jev.model, date: new Date().toISOString(), rows: rows.map((r) => r.raw) };
+      writeFileSync(RAW_PATH, `${JSON.stringify(raw, null, 1)}\n`, "utf8");
+    }
+  }
   console.log(report);
 }
 

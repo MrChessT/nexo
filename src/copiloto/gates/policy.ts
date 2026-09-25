@@ -37,6 +37,7 @@ export const POLICIES: Record<ContextKey, ContextPolicy> = {
   "consulta:query_orders": { risk: "lectura", slots: slots(O, I, I, I, I, I, I) },
   "consulta:query_spend": { risk: "lectura", slots: slots(O, I, I, I, I, O, I) },
   "consulta:query_product": { risk: "lectura", slots: slots(O, I, I, R, I, I, I) },
+  "consulta:query_top_usage": { risk: "lectura", slots: slots(O, I, O, O, I, O, I) },
   navegar: { risk: "lectura", slots: slots(O, I, I, O, I, O, I) },
   "accion:merma": { risk: "escritura", slots: slots(R, I, O, R, R, I, O) },
   "accion:traspaso": { risk: "escritura", slots: slots(R, R, I, R, R, I, I) },

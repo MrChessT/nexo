@@ -5,7 +5,7 @@
 // español (contrato interno); el mensaje del usuario va en el state sin traducir.
 import { choice, noul, score, type ChoiceCriteria, type JsonValue, type Questions } from "@typesafe-ai/sdk";
 
-export const CATALOG_VERSION = "2026-09-25.9";
+export const CATALOG_VERSION = "2026-09-26.1";
 
 // Opciones fijas --------------------------------------------------------------
 
@@ -49,6 +49,7 @@ export const HERRAMIENTAS = {
   query_reorder: "What is missing or needs ordering, compared with minimum levels and usual consumption.",
   query_orders: "Purchase orders already placed with suppliers: drafts not sent, orders pending delivery, late deliveries.",
   query_spend: "How much money was spent on purchases (goods received) per supplier over a period.",
+  query_top_usage: "Ranking of the products that are used or sold the most over a period (\"what do we go through the most?\", \"top products this month\"), with quantity, value and share of the total.",
   query_product: "Details of a specific product: its formats (bottle, box), category, who supplies it and last purchase price, and its stock and minimum in each venue (\"what does the Beefeater cost us?\", \"who brings us the Tanqueray?\", \"product sheet of the Larios\").",
   ninguna: "No data lookup is needed.",
 } as const satisfies ChoiceCriteria;
@@ -149,6 +150,7 @@ export const LABELS: Record<string, string> = {
   query_reorder: "Qué reponer",
   query_orders: "Pedidos",
   query_spend: "Gasto en compras",
+  query_top_usage: "Lo que más se gasta",
   query_product: "Ficha de producto",
   merma: "Registrar merma",
   traspaso: "Traspaso entre locales",

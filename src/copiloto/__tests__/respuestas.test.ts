@@ -77,3 +77,27 @@ describe("botones para seguir desde una respuesta", () => {
     expect(find(events, "done")).toBeDefined();
   });
 });
+
+describe("«¿qué es lo que más se gasta?»", () => {
+  it("ranking por valor consumido del último mes, con tabla, gráfica diaria y botones", async () => {
+    const jev = new FakeJev([{ intent: "consultar", intent_alt: "leer", herramienta: "query_top_usage" }]);
+    const { agent } = makeAgent(jev);
+    const events = await run(agent, chat("¿qué es lo que más se gasta?"));
+    expect(jev.calls).toHaveLength(1);
+    const text = find(events, "done")!.text;
+    // Con tabla, el texto es solo el titular.
+    expect(text).toBe("Lo que más se gasta en tus 4 locales (los últimos 30 días): Coca-Cola 20 cl, 70 cajas (924,00 €, el 81 % del consumo). Consumo total: 1.134,00 €.");
+    const table = find(events, "table")!;
+    expect(table.columns.map((c) => c.key)).toEqual(["posicion", "producto", "cantidad", "valor", "porcentaje", "desglose"]);
+    expect(table.rows[0]).toMatchObject({ posicion: "1", producto: "Coca-Cola 20 cl", cantidad: "70 cajas", desglose: "Vivero 46 cajas + 16 ud · Parador 23 cajas + 8 ud" });
+    expect(find(events, "chart")).toMatchObject({ id: "consumo-diario" });
+    expect(find(events, "navigate")).toMatchObject({ route: "/informes", filters: { view: "consumo" } });
+    expect(find(events, "actions")!.actions.map((a) => a.label)).toEqual(["Stock actual", "Qué reponer"]);
+  });
+
+  it("en un local y un periodo: una fila por producto sin reparto por local", async () => {
+    const jev = new FakeJev([{ intent: "consultar", intent_alt: "leer", herramienta: "query_top_usage", local: "Parador", periodo: "semana" }]);
+    const text = find(await run(makeAgent(jev).agent, chat("¿qué es lo que más se ha gastado esta semana en el Parador?")), "done")!.text;
+    expect(text).toMatch(/^Lo que más se gasta en Parador \(.+\): Coca-Cola 20 cl, /);
+  });
+});
