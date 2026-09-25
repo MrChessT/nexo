@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, Loader2, Send, ShieldAlert, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CircleAlert, CircleCheck, LayoutGrid, Loader2, Send, ShieldAlert, Sparkles, X } from "lucide-react";
 import { ChartCard } from "@/components/charts/charts";
 import Decimal from "decimal.js";
 import { decimalText, euros, parseDecimal } from "@/lib/format";
 import type { ActionsEvent, AppRoute, ChartSpec, ClarifyEvent, ConfirmResponse, Decision, DecisionEvent, DoneEvent, Draft, DraftCheck, ErrorEvent, NavigateEvent, ResolvedEvent, Suggestion, TableEvent } from "./types";
+import { QuickActions } from "./quick-actions";
 import "./copiloto.css";
 
 type Item =
@@ -116,6 +117,7 @@ export function Copiloto() {
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [pendingClarify, setPendingClarify] = useState<ClarifyEvent | null>(null);
+  const [functionsOpen, setFunctionsOpen] = useState(false);
   const sessionId = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +146,11 @@ export function Copiloto() {
         event.preventDefault();
         toggle();
       } else if (event.key === "Escape") {
-        setOpen(false);
+        // Primero se cierra el menú de funciones; después, el panel.
+        setFunctionsOpen((was) => {
+          if (!was) setOpen(false);
+          return false;
+        });
       }
     }
     window.addEventListener("keydown", onKey);
@@ -163,13 +169,14 @@ export function Copiloto() {
     setItems((prev) => prev.map((item) => (item.id === id && item.role === "assistant" ? { ...item, ...patch(item) } : item)));
   }
 
-  async function send(message: string, clarification?: { clarifyId: string; optionId: string; freeText?: string }, followUpId?: string) {
+  /** `display`: lo que se enseña como mensaje del usuario (el menú de funciones manda un atajo). */
+  async function send(message: string, clarification?: { clarifyId: string; optionId: string; freeText?: string }, followUpId?: string, display?: string) {
     if (busy || !message.trim()) return;
     sessionId.current ??= newId();
     const assistantId = newId();
     setBusy(true);
     setPendingClarify(null);
-    setItems((prev) => [...prev, { id: newId(), role: "user", text: message }, { id: assistantId, role: "assistant", text: "", pending: true }]);
+    setItems((prev) => [...prev, { id: newId(), role: "user", text: display ?? message }, { id: assistantId, role: "assistant", text: "", pending: true }]);
 
     let autoNavigate: NavigateEvent | null = null;
     try {
@@ -354,11 +361,39 @@ export function Copiloto() {
               )}
             </div>
 
+            {functionsOpen && (
+              <QuickActions
+                disabled={busy}
+                onClose={() => setFunctionsOpen(false)}
+                onRun={(message, display) => {
+                  setFunctionsOpen(false);
+                  void send(message, undefined, undefined, display);
+                }}
+              />
+            )}
+
             <form className="copiloto-input" onSubmit={submit}>
+              <button
+                type="button"
+                className={`copiloto-functions-toggle${functionsOpen ? " active" : ""}`}
+                onClick={() => setFunctionsOpen((was) => !was)}
+                aria-expanded={functionsOpen}
+                aria-label="Funciones"
+                title="Funciones (o escribe /)"
+              >
+                <LayoutGrid size={16} />
+              </button>
               <input
                 ref={inputRef}
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  // «/» en el campo vacío abre el menú de funciones.
+                  if (event.target.value === "/" && !input) {
+                    setFunctionsOpen(true);
+                    return;
+                  }
+                  setInput(event.target.value);
+                }}
                 placeholder={pendingClarify ? "Responde o escribe otra cosa…" : "Pregunta o pide una operación…"}
                 maxLength={1000}
               />
